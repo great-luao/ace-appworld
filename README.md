@@ -88,6 +88,7 @@ After we obtain the offline-optimized context, run evaluation on the test-normal
 ```bash
 appworld run ACE_offline_no_GT_evaluation
 ```
+This step is essential as we need to collect the generations using the trained playbook. The output of this run will be evaluated in the below section, not the training run. 
 
 ### 3.1 Online Context Adaptation with ACE
 
@@ -98,7 +99,7 @@ appworld run ACE_online_no_GT
 
 ## 4. Evaluate Results
 
-After the run above completes, run the follow command to obtain the aggregated metrics. Replace ```CONFIG_FILE_NAME``` with the config file associated with your experiment (e.g., ```ACE_offline_no_GT_evaluation``` or ```ACE_online_no_GT```). This should take no more than 2-3 minutes:
+After the run above completes, run the follow command to obtain the aggregated metrics. Replace ```CONFIG_FILE_NAME``` with the config file associated with your experiment (e.g., ```ACE_offline_no_GT_evaluation``` or ```ACE_online_no_GT```). This step does not generate any output, so make sure the configs you are evaluating have been run. This step should take no more than 2-3 minutes:
 ```bash
 appworld evaluate CONFIG_FILE_NAME test_normal
 appworld evaluate CONFIG_FILE_NAME test_challenge
