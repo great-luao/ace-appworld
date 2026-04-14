@@ -35,6 +35,10 @@ local generator_model_config = {
             },
             "generator_prompt_file_path": experiment_prompts_path + "/react.txt",
             "ignore_multiple_calls": true,
+            "enable_output_prediction": true,
+            "output_prediction_max_tokens": 400,
+            "output_prediction_stop_tokens": ["```"],
+            "output_prediction_prompt_file_path": experiment_prompts_path + "/output_prediction_injection.txt",
             "max_steps": 40,
             "max_cost_overall": 1000,
             "max_cost_per_task": 10,
@@ -42,6 +46,7 @@ local generator_model_config = {
             "max_prompt_length": 100000,
             "max_output_length": 50000,
         },
-        "dataset": "test_normal",
+        "dataset": "train",
+        "sample_size": 10,
     }
 }

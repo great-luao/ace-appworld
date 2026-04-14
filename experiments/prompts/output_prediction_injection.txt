@@ -1,0 +1,13 @@
+USER:
+Before writing your next code block, predict what the environment would return for the most recent Python code you already produced.
+Do not write new code. Do not call APIs. Only provide the predicted environment feedback.
+Use this exact format:
+Output:
+```
+<predicted environment feedback>
+```
+
+ASSISTANT:
+I think the environment output for this code execution is:
+Output:
+```

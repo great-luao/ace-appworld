@@ -8,7 +8,6 @@ from jinja2 import Template
 
 from appworld import AppWorld
 from appworld.common.utils import read_file
-from appworld_experiments.code.ace.evaluation_agent import Agent, ExecutionIO
 from appworld_experiments.code.ace.base_agent import BaseAgent, ExecutionIO
 
 @BaseAgent.register("base_react")
@@ -19,6 +18,10 @@ class BaseSimplifiedReActAgent(BaseAgent):
         ignore_multiple_calls: bool = True,
         max_prompt_length: int = 100000,
         max_output_length: int = 50000,
+        enable_output_prediction: bool = True,
+        output_prediction_max_tokens: int = 400,
+        output_prediction_stop_tokens: list[str] | None = None,
+        output_prediction_prompt_file_path: str | None = None,
         **kwargs: Any,
     ):
         super().__init__(**kwargs)
@@ -26,6 +29,31 @@ class BaseSimplifiedReActAgent(BaseAgent):
         self.max_prompt_length = max_prompt_length
         self.max_output_length = max_output_length
         self.ignore_multiple_calls = ignore_multiple_calls
+        self.enable_output_prediction = enable_output_prediction
+        self.output_prediction_max_tokens = output_prediction_max_tokens
+        self.output_prediction_stop_tokens = output_prediction_stop_tokens or ["```"]
+        if output_prediction_prompt_file_path is None:
+            output_prediction_prompt_file_path = os.path.abspath(
+                os.path.join(
+                    os.path.dirname(__file__), "..", "..", "prompts", "output_prediction_injection.txt"
+                )
+            )
+        self.output_prediction_prompt_file_path = output_prediction_prompt_file_path
+        output_prediction_prompt = read_file(
+            self.output_prediction_prompt_file_path.replace("/", os.sep)
+        ).lstrip()
+        self.output_prediction_messages_template = self.text_to_messages(output_prediction_prompt)
+        if len(self.output_prediction_messages_template) != 2:
+            raise ValueError(
+                "output prediction prompt must contain exactly 2 messages: USER then ASSISTANT."
+            )
+        if self.output_prediction_messages_template[0]["role"] != "user":
+            raise ValueError("The first output prediction prompt message must be USER.")
+        if self.output_prediction_messages_template[1]["role"] != "assistant":
+            raise ValueError("The second output prediction prompt message must be ASSISTANT.")
+        self.output_prediction_assistant_prefix = self.output_prediction_messages_template[1][
+            "content"
+        ].strip()
         self.partial_code_regex = r".*```python\n(.*)"
         self.full_code_regex = r"```python\n(.*?)```"
 
@@ -73,7 +101,14 @@ class BaseSimplifiedReActAgent(BaseAgent):
         self.logger.show_message(
             role="agent", message=fixed_output_content, step_number=self.step_number
         )
-        return [ExecutionIO(content=code)], output["cost"]
+        predicted_output = ""
+        prediction_cost = 0.0
+        if self.enable_output_prediction and code.strip():
+            predicted_output, prediction_cost = self.predict_environment_output()
+
+        return [
+            ExecutionIO(content=code, metadata={"predicted_output": predicted_output})
+        ], output["cost"] + prediction_cost
 
     def extract_code_and_fix_content(self, text: str) -> tuple[str, str]:
         if text is None:
@@ -192,3 +227,47 @@ class BaseSimplifiedReActAgent(BaseAgent):
             output_str = output_str.removeprefix(remove_prefix)
         messages = pre_messages + post_messages
         return messages
+
+    def predict_environment_output(self) -> tuple[str, float]:
+        prediction_messages = self.build_assistant_injection_prediction_messages()
+        prediction_stop_tokens = self.get_prediction_stop_tokens()
+        prediction = self.language_model.generate(
+            messages=prediction_messages,
+            stop=prediction_stop_tokens,
+            max_tokens=self.output_prediction_max_tokens,
+            temperature=0,
+        )
+        predicted_text = self.clean_predicted_output(prediction.get("content") or "")
+        return predicted_text, prediction["cost"]
+
+    def build_assistant_injection_prediction_messages(self) -> list[dict[str, str]]:
+        prediction_messages = copy.deepcopy(self.trimmed_messages)
+        prediction_messages.extend(copy.deepcopy(self.output_prediction_messages_template))
+        return prediction_messages
+
+    def get_prediction_stop_tokens(self) -> list[str]:
+        extra_stops = ["```", "\nCode:\n```python", "\nASSISTANT:", "\nUSER:"]
+        stop_tokens = list(self.output_prediction_stop_tokens) + extra_stops
+        # Preserve order and de-duplicate.
+        return list(dict.fromkeys(stop_tokens))
+
+    def clean_predicted_output(self, text: str) -> str:
+        cleaned = text.strip()
+        if not cleaned:
+            return ""
+
+        for prefix in (
+            self.output_prediction_assistant_prefix,
+            "Output:\n",
+        ):
+            if cleaned.startswith(prefix):
+                cleaned = cleaned[len(prefix) :].lstrip()
+
+        if cleaned.startswith("```"):
+            cleaned = cleaned[3:]
+            if cleaned.startswith("python\n"):
+                cleaned = cleaned[len("python\n") :]
+            if "```" in cleaned:
+                cleaned = cleaned.split("```", 1)[0]
+
+        return cleaned.rstrip()

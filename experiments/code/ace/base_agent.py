@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from appworld import AppWorld
-from appworld.common.constants import DEFAULT_EXPERIMENT_NAME
+from appworld.common.constants import DEFAULT_EXPERIMENT_NAME, SINGLE_HORIZONTAL_RULE
 from appworld.common.random import set_random_seed
 from appworld.common.utils import FromDict, chunk_and_return
 from appworld_experiments.code.ace.cost_tracker import CostTracker
@@ -42,6 +42,7 @@ class BaseAgent(FromDict):
         logger_config = logger_config or {}
         logger_config["cost_tracker"] = self.cost_tracker
         self.logger = Logger(**logger_config)
+        self.predicted_environment_io: list[dict[str, str]] = []
 
     def initialize(self, world: AppWorld):
         self.world = world
@@ -50,6 +51,7 @@ class BaseAgent(FromDict):
         self.cost_tracker.reset(world.task_id)
         self.step_number = 0
         self.messages = []
+        self.predicted_environment_io = []
         self.logger.start_task(world)
         set_random_seed(self.random_seed)
 
@@ -76,6 +78,14 @@ class BaseAgent(FromDict):
                     )
                     for execution_input in execution_inputs
                 ]
+                for execution_input, execution_output in zip(execution_inputs, execution_outputs):
+                    predicted_output = execution_input.metadata.get("predicted_output", "")
+                    self.record_predicted_environment_io(
+                        input_code=execution_input.content,
+                        predicted_output=predicted_output,
+                        actual_output=execution_output.content,
+                    )
+                self._save_predicted_environment_io_log()
                 self.cost_tracker.add(task_id, cost)
                 self.log_cost()
                 if world.task_completed() or self.cost_tracker.exceeded():
@@ -103,3 +113,28 @@ class BaseAgent(FromDict):
 
     def log_cost(self) -> None:
         self.cost_tracker.save(os.path.join(self.world.output_misc_directory, "cost.txt"))
+
+    def record_predicted_environment_io(
+        self, input_code: str, predicted_output: str, actual_output: str
+    ) -> None:
+        predicted_output = predicted_output or ""
+        actual_output = actual_output or ""
+        clipped_prediction = predicted_output[: len(actual_output)]
+        self.predicted_environment_io.append(
+            {"input": input_code, "output": clipped_prediction.rstrip()}
+        )
+
+    def _save_predicted_environment_io_log(self) -> None:
+        predicted_io_log_file_path = os.path.join(
+            self.world.output_logs_directory, "predicted_environment_io.md"
+        )
+        with open(predicted_io_log_file_path, "w", encoding="utf-8") as file:
+            for index, entry in enumerate(self.predicted_environment_io):
+                content = "\n".join(
+                    [
+                        f"\n### Environment Interaction {index + 1}\n{SINGLE_HORIZONTAL_RULE}",
+                        f"```python\n{entry['input']}\n```\n",
+                        f"```\n{entry['output']}\n```\n\n",
+                    ]
+                )
+                file.write(content)
