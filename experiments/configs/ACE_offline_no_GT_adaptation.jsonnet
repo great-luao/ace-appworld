@@ -5,8 +5,9 @@ local experiment_configs_path = project_home_path + "/experiments/configs";
 local experiment_code_path = project_home_path + "/experiments/code";
 
 local generator_model_config = {
-    "name": "DeepSeek-V3.1",
-    "provider": "sambanova",
+    "name": "gpt-5.4",
+    "provider": "OpenAI",
+    "base_url": "https://api.zwlbnot.cn/v1",
     "temperature": 0,
     "seed": 100,
     "stop": ["<|endoftext|>", "<|eot_id|>", "<|start_header_id|>"],
@@ -22,8 +23,9 @@ local generator_model_config = {
 };
 
 local reflector_model_config = {
-    "name": "DeepSeek-V3.1",
-    "provider": "sambanova",
+    "name": "gpt-5.4",
+    "provider": "OpenAI",
+    "base_url": "https://api.zwlbnot.cn/v1",
     "temperature": 0,
     "seed": 100,
     "stop": ["<|endoftext|>", "<|eot_id|>", "<|start_header_id|>"],
@@ -39,8 +41,9 @@ local reflector_model_config = {
 };
 
 local curator_model_config = {
-    "name": "DeepSeek-V3.1",
-    "provider": "sambanova",
+    "name": "gpt-5.4",
+    "provider": "OpenAI",
+    "base_url": "https://api.zwlbnot.cn/v1",
     "temperature": 0,
     "seed": 100,
     "stop": ["<|endoftext|>", "<|eot_id|>", "<|start_header_id|>"],

@@ -29,6 +29,9 @@ from rich.panel import Panel
 from appworld import AppWorld
 from appworld.common.path_store import path_store
 from appworld.common.utils import rprint, write_jsonl
+from dotenv import load_dotenv
+
+load_dotenv("../.env")
 
 litellm.drop_params = True
 cache = Memory(os.path.join(path_store.cache, "llm_calls"), verbose=0)
@@ -50,7 +53,7 @@ RETRY_ERROR = (
     UnprocessableEntityError,
 )
 CHAT_COMPLETION = {  # These are lambda so set environment variables take effect at runtime
-    "openai": lambda: OpenAI(api_key="9b419298-ffce-4d50-a42c-0b4a0b911a89", base_url="https://api.sambanova.ai/v1").chat.completions.create,
+    "openai": lambda: OpenAI(api_key=os.getenv('OPENAI_API_KEY'), base_url="https://api.zwlbnot.cn/v1",default_headers={"User-Agent": "MyCustomClient/1.0"}).chat.completions.create,
     "litellm": lambda: litellm.completion,
 }
 
@@ -151,7 +154,8 @@ def non_cached_chat_completion(
         client = Together()
     elif provider.strip().lower() == "openai":
         from openai import OpenAI
-        client = OpenAI()
+        client = OpenAI(default_headers={"User-Agent": "MyCustomClient/1.0"})
+        print("Using OpenAI with custom headers")
     else:
         raise ValueError(
             f"Invalid provider: {provider}."

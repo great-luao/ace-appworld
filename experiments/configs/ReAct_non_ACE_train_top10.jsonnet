@@ -1,8 +1,5 @@
 local project_home_path = std.extVar("APPWORLD_PROJECT_PATH");
 local experiment_prompts_path = project_home_path + "/experiments/prompts";
-local experiment_playbooks_path = project_home_path + "/experiments/playbooks";
-local experiment_configs_path = project_home_path + "/experiments/configs";
-local experiment_code_path = project_home_path + "/experiments/code";
 
 local generator_model_config = {
     "name": "gpt-5.4",
@@ -25,9 +22,9 @@ local generator_model_config = {
 {
     "type": "ace",
     "config": {
-        "run_type": "ace-evaluation",
+        "run_type": "non-ace-evaluation",
         "agent": {
-            "type": "ace_evaluation_react",
+            "type": "base_react",
             "generator_model_config": generator_model_config,
             "appworld_config": {
                 "random_seed": 123,
@@ -36,14 +33,16 @@ local generator_model_config = {
                 "color": true,
                 "verbose": true,
             },
-            "generator_prompt_file_path": experiment_prompts_path + "/appworld_react_generator_prompt.txt",
-            "trained_playbook_file_path": experiment_playbooks_path + "/appworld_offline_trained_no_gt_playbook_deepseek_3_1.txt",  
+            "generator_prompt_file_path": experiment_prompts_path + "/react.txt",
             "ignore_multiple_calls": true,
             "max_steps": 40,
             "max_cost_overall": 1000,
             "max_cost_per_task": 10,
             "log_lm_calls": true,
+            "max_prompt_length": 100000,
+            "max_output_length": 50000,
         },
-        "dataset": "test_normal",
+        "dataset": "train",
+        "sample_size": 10,
     }
 }
