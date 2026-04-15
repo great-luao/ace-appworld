@@ -1,0 +1,4 @@
+- 预测输出机制（当前版本）：
+  - 主消息序列后追加一个 USER 注入 + 一个 ASSISTANT 前缀（来自 prompt 文件）；
+  - 让模型续写 `Output`；
+  - 用 stop token 与长度上限截断；
