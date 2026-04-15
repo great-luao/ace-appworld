@@ -43,10 +43,10 @@ local generator_model_config = {
             "max_cost_overall": 1000,
             "max_cost_per_task": 10,
             "log_lm_calls": true,
-            "max_prompt_length": 100000,
-            "max_output_length": 50000,
+            "max_prompt_length": 200000,
+            "max_output_length": 100000,
         },
-        "dataset": "train",
-        "sample_size": 10,
+        "dataset": "train_difficulty_2",
+        "skip_existing_outputs": true,
     }
 }

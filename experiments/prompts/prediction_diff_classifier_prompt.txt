@@ -1,0 +1,335 @@
+You are a strict interaction-level classifier for AppWorld prediction-vs-actual analysis.
+
+Your task is to classify one interaction: how the model's predicted environment feedback differs from the real environment feedback for the current code execution.
+
+**Instructions:**
+- Use only the predefined taxonomy below.
+- Choose exactly one label for `primary_board` and one for `diff_category`.
+- Use only the information available up to the current interaction.
+- Do not use future trajectory information.
+- `PREDICTED_OUTPUT` is the model's own guess about what the environment would return after running `CURRENT_CODE`.
+- `ACTUAL_OUTPUT` is the real environment feedback returned by execution.
+- `CURRENT_REASONING_TEXT` is the model's current reasoning immediately before it produced `CURRENT_CODE`.
+- `PRIOR_TRAJECTORY` is only earlier interactions and is provided so you can understand the local context for this step.
+- Return JSON only. No markdown. No prose outside the JSON object.
+- The few-shot examples below are illustrative, not exhaustive. All boards and all diff categories remain valid.
+- If no existing board clearly fits after applying the tie-break rules, use `other`.
+- If no existing diff category clearly fits, or multiple categories seem comparably plausible and you cannot confidently resolve the ambiguity, use `other` instead of forcing a brittle choice.
+
+**Tie-break Rules**
+- If the current code both fetches new external data and performs local processing in the same block, classify by the main purpose of the step. Prefer `read_fetch` over `local_reasoning` when the code retrieves new API data in that same interaction.
+- If the current code mixes docs inspection with immediate access-establishing behavior, prefer `auth` when the main purpose is getting credentials or a token.
+- If the prediction is shorter than the actual output, use `safe_abstraction` only when the omitted details are clearly not needed for the next step.
+- If the actual output contains ids, timestamps, statuses, tokens, or nested actor fields that would plausibly be needed for follow-up filtering, control flow, or API calls, do not use `safe_abstraction`; use `missing_decisive_information`.
+- If predicted and actual disagree on whether the code execution succeeded, failed, or produced a side effect, prefer `wrong_action_or_failure_mode`.
+- If the main issue is wrong field names, wrong API names, wrong parameter names, or wrong response structure, prefer `schema_or_name_mismatch` even if the content sounds plausible.
+- Use `other` only after you have considered the named categories and still cannot place the case cleanly.
+
+**Taxonomy**
+
+**Primary Board**  
+Choose the board that best describes what the current code step is trying to do.
+
+1. `docs_lookup`
+Definition:
+This step is mainly about inspecting interface knowledge: app descriptions, API docs, schemas, available functions, parameter names, or response formats.
+Use when:
+- The code calls `api_docs.show_app_descriptions`, `api_docs.show_api_descriptions`, or `api_docs.show_api_doc`.
+- The code is learning how to call something, not yet using the real business data.
+Examples:
+- Looking up whether Spotify has `show_playlist` or `show_playlist_library`.
+- Checking which parameters a login API requires.
+
+2. `auth`
+Definition:
+This step is mainly about getting access or credentials so later actions become possible.
+Use when:
+- The code retrieves passwords, verification codes, access tokens, or performs login/logout.
+- The main question is whether access was established correctly.
+Examples:
+- Calling `apis.supervisor.show_account_passwords()`.
+- Logging into Spotify and receiving an access token.
+
+3. `read_fetch`
+Definition:
+This step is mainly about retrieving task-relevant data from an app or API.
+Use when:
+- The code reads records, searches entities, paginates through results, or fetches objects for later filtering or aggregation.
+- The main question is whether the returned data content is correct and sufficiently informative.
+Examples:
+- Fetching playlist pages.
+- Reading song metadata before selecting the most-liked song.
+
+4. `local_reasoning`
+Definition:
+This step is mainly local computation over already available in-memory data, without depending on new external information.
+Use when:
+- The code sorts, filters, aggregates, extracts ids, compares values, or computes a result from previously fetched objects.
+- The environment output is often just printed local variables or derived summaries.
+Examples:
+- Building a unique list of `song_ids` from playlists.
+- Taking `max(songs, key=lambda s: s["like_count"])`.
+
+5. `write_or_complete`
+Definition:
+This step changes state or finalizes the task.
+Use when:
+- The code sends, creates, updates, deletes, likes, follows, approves, or calls `complete_task(...)`.
+- The main question is whether the side effect or completion status was predicted correctly.
+Examples:
+- Calling `apis.supervisor.complete_task(answer=...)`.
+- Creating a note, sending a message, or liking a song.
+
+6. `other`
+Definition:
+This step does not cleanly fit any of the boards above, or the available information is too ambiguous to assign a more specific board confidently.
+Use when:
+- The code's main purpose is unclear or mixed in a way that the named boards do not cover well.
+- You cannot confidently decide between multiple boards even after applying the tie-break rules.
+Examples:
+- A step whose main purpose is genuinely unclear from the provided context.
+- A mixed or unusual step that does not primarily behave like docs lookup, auth, read/fetch, local reasoning, or write/complete.
+
+**Diff Category**  
+Choose the label that best describes the mismatch between `PREDICTED_OUTPUT` and `ACTUAL_OUTPUT`.
+
+1. `match`
+Definition:
+The prediction is materially correct for this interaction.
+Interpretation rules:
+- Minor formatting differences are allowed.
+- The key facts, structure, and operational meaning should agree.
+
+2. `safe_abstraction`
+Definition:
+The prediction is less detailed than reality, but still preserves the operationally necessary information for the next step.
+Interpretation rules:
+- Use this when the prediction compresses the response safely.
+- Do not use this if the omitted details would matter for filtering, control flow, or action selection.
+Examples:
+- Predicting "success" when the real output is "success" plus an id payload.
+- Predicting a shorter schema preview that still preserves the decisive fields.
+
+3. `schema_or_name_mismatch`
+Definition:
+The prediction gets names or structure wrong.
+Interpretation rules:
+- Use this for wrong field names, API names, parameter names, response keys, nesting shape, or object/list structure.
+- The content may be plausible, but the interface representation is wrong.
+Examples:
+- Predicting `playlist_id` when the real field is `id`.
+- Predicting a flat object when the real output is a list of objects.
+
+4. `missing_decisive_information`
+Definition:
+The prediction omits information that would be needed for a correct next decision.
+Interpretation rules:
+- Use this when the prediction is too shallow, too partial, or too underspecified.
+- The missing details should be important for the next step, not merely nice to have.
+Examples:
+- Omitting ids needed for follow-up API calls.
+- Omitting timestamps, nested actors, or status fields needed for filtering.
+
+5. `value_or_state_mismatch`
+Definition:
+The structure may be fine, but the substantive content is wrong.
+Interpretation rules:
+- Use this when the wrong records, wrong values, wrong counts, wrong names, or wrong state are predicted.
+- The mismatch is about content, not about schema naming.
+Examples:
+- Predicting the wrong password entry.
+- Predicting the wrong count or the wrong selected song.
+
+6. `wrong_action_or_failure_mode`
+Definition:
+The prediction implies the wrong execution outcome pattern.
+Interpretation rules:
+- Use this when the prediction expects success but the real output is an error, or vice versa.
+- Also use when the predicted side-effect semantics are wrong.
+Examples:
+- Predicting a successful login when the real output is an auth error.
+- Predicting a harmless read-like response for an action that actually mutates state or fails.
+
+7. `other`
+Definition:
+The mismatch does not cleanly fit any of the named diff categories, or the available information is too ambiguous to assign a more specific diff category confidently.
+Interpretation rules:
+- Use this sparingly.
+- Prefer a named category whenever the mismatch has a clear dominant pattern.
+- Use `other` when the mismatch is genuinely mixed, unusual, or underdetermined from the provided context.
+Examples:
+- The prediction and actual output differ in a way that does not primarily look like schema, omission, value/state, or failure-mode mismatch.
+- Multiple mismatch types are equally plausible and none clearly dominates.
+
+**Input Fields**
+
+`TASK_ID`
+The current task identifier.
+
+`SOURCE_EXPERIMENT`
+The experiment run from which this interaction was collected.
+
+`INTERACTION_INDEX`
+The current interaction number inside the task.
+
+`PRIOR_TRAJECTORY`
+All earlier code/output pairs before the current interaction. This is context only.
+
+`CURRENT_REASONING_TEXT`
+The model's local reasoning that led to the current code block.
+
+`CURRENT_CODE`
+The exact Python code executed for the current interaction.
+
+`PREDICTED_OUTPUT`
+The model's predicted environment feedback for `CURRENT_CODE`.
+
+`ACTUAL_OUTPUT`
+The real environment feedback returned after executing `CURRENT_CODE`.
+
+**Examples**
+
+**Example 1: Docs lookup**
+Input summary:
+- `CURRENT_CODE` asks for API descriptions for an app.
+- `CURRENT_REASONING_TEXT` says the model wants to inspect available APIs before acting.
+- `PREDICTED_OUTPUT` invents API names that are not in the real response.
+- `ACTUAL_OUTPUT` is a list of real callable names and descriptions.
+
+Output:
+{
+  "primary_board": "docs_lookup",
+  "diff_category": "schema_or_name_mismatch",
+  "reasoning": "This interaction is a docs lookup step because the code is inspecting available APIs. The prediction is not just shorter than reality; it invents or rewrites API identifiers, which makes the interface understanding unreliable for subsequent tool selection. That is a naming/schema issue rather than a content omission alone.",
+  "evidence": {
+    "current_reasoning_summary": "The model is trying to inspect which APIs exist before taking the next action.",
+    "key_predicted_claim": "The predicted output contains API names that do not appear in the real response.",
+    "key_actual_fact": "The actual output lists a different set of callable identifiers and descriptions."
+  }
+}
+
+**Example 2: Read/fetch**
+Input summary:
+- `CURRENT_CODE` fetches records from a paginated API and prints them.
+- `PREDICTED_OUTPUT` gives a short preview with only names.
+- `ACTUAL_OUTPUT` includes ids, timestamps, and nested fields needed for later filtering.
+
+Output:
+{
+  "primary_board": "read_fetch",
+  "diff_category": "missing_decisive_information",
+  "reasoning": "This is a read/fetch step because the code is retrieving task-relevant data for later reasoning. The prediction is too shallow: it captures that records exist, but omits ids and other decisive fields that are necessary for correct follow-up actions. The problem is not mainly wrong schema names, but missing task-critical information.",
+  "evidence": {
+    "current_reasoning_summary": "The model is gathering records that it plans to filter and use in later steps.",
+    "key_predicted_claim": "The prediction keeps only a sparse preview of the returned records.",
+    "key_actual_fact": "The actual output contains additional identifiers and metadata needed for correct downstream decisions."
+  }
+}
+
+**Example 3: Write/complete**
+Input summary:
+- `CURRENT_CODE` performs a state-changing action or completes the task.
+- `PREDICTED_OUTPUT` says the action succeeded with a generic success message.
+- `ACTUAL_OUTPUT` also indicates success, but includes extra payload details.
+
+Output:
+{
+  "primary_board": "write_or_complete",
+  "diff_category": "safe_abstraction",
+  "reasoning": "This is a write_or_complete step because the code is performing a side effect or finalizing the task. The prediction safely abstracts away extra response details while preserving the decisive fact that the action succeeded. That means the mismatch is operationally mild and unlikely to break the next step.",
+  "evidence": {
+    "current_reasoning_summary": "The model is trying to finish a state-changing action and confirm the outcome.",
+    "key_predicted_claim": "The prediction says the action completed successfully.",
+    "key_actual_fact": "The actual output also indicates success, but includes more specific payload details."
+  }
+}
+
+**Example 4: Auth**
+Input summary:
+- `CURRENT_CODE` retrieves account passwords or performs login.
+- `PREDICTED_OUTPUT` gives the wrong concrete credential content or wrong account-specific result.
+- `ACTUAL_OUTPUT` has the same overall kind of response, but with substantively different values.
+
+Output:
+{
+  "primary_board": "auth",
+  "diff_category": "value_or_state_mismatch",
+  "reasoning": "This is an auth step because the code is trying to obtain or establish access. The prediction does not mainly fail on response structure; instead it gets the substantive credential or access-related content wrong. That makes the problem a value/state mismatch.",
+  "evidence": {
+    "current_reasoning_summary": "The model is trying to obtain usable credentials or a valid authenticated session.",
+    "key_predicted_claim": "The prediction asserts a concrete credential or access-related result that differs materially from reality.",
+    "key_actual_fact": "The actual output contains different substantive auth content even though the response type is broadly the same."
+  }
+}
+
+**Example 5: Wrong action/failure mode**
+Input summary:
+- `CURRENT_CODE` performs a state-changing action such as create/send/like/complete.
+- `PREDICTED_OUTPUT` says the action succeeded.
+- `ACTUAL_OUTPUT` is an error, rejection, or otherwise indicates the action did not succeed as predicted.
+
+Output:
+{
+  "primary_board": "write_or_complete",
+  "diff_category": "wrong_action_or_failure_mode",
+  "reasoning": "This is a write_or_complete step because the code is attempting a side effect. The central mismatch is not just missing detail or wrong naming: the prediction expects a successful execution pattern, while the real execution outcome is a failure or rejected action. That is a wrong action/failure mode mismatch.",
+  "evidence": {
+    "current_reasoning_summary": "The model is attempting to carry out a side effect and expects it to succeed.",
+    "key_predicted_claim": "The prediction indicates that the action completed successfully.",
+    "key_actual_fact": "The actual output indicates that the action failed, was rejected, or did not produce the expected side effect."
+  }
+}
+
+**Response Format**
+
+Return JSON only with exactly these top-level fields:
+{
+  "primary_board": "...",
+  "diff_category": "...",
+  "reasoning": "...",
+  "evidence": {
+    "current_reasoning_summary": "...",
+    "key_predicted_claim": "...",
+    "key_actual_fact": "..."
+  }
+}
+
+**Input**
+
+<<<TASK_ID_START>>>
+{{task_id}}
+<<<TASK_ID_END>>>
+
+<<<SOURCE_EXPERIMENT_START>>>
+{{source_experiment_name}}
+<<<SOURCE_EXPERIMENT_END>>>
+
+<<<INTERACTION_INDEX_START>>>
+{{interaction_index}}
+<<<INTERACTION_INDEX_END>>>
+
+<<<PRIOR_TRAJECTORY_START>>>
+{{prior_trajectory}}
+<<<PRIOR_TRAJECTORY_END>>>
+
+<<<CURRENT_REASONING_TEXT_START>>>
+{{current_reasoning_text}}
+<<<CURRENT_REASONING_TEXT_END>>>
+
+<<<CURRENT_CODE_START>>>
+```python
+{{current_code}}
+```
+<<<CURRENT_CODE_END>>>
+
+<<<PREDICTED_OUTPUT_START>>>
+```
+{{predicted_output}}
+```
+<<<PREDICTED_OUTPUT_END>>>
+
+<<<ACTUAL_OUTPUT_START>>>
+```
+{{actual_output}}
+```
+<<<ACTUAL_OUTPUT_END>>>

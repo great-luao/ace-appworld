@@ -27,6 +27,7 @@ class BaseAgent(FromDict):
         max_cost_overall: float = 3000,
         max_cost_per_task: float = 10,
         log_lm_calls: bool = False,
+        predicted_output_log_max_length: int = 20000,
     ):
         self.language_model = LiteLLMGenerator(**generator_model_config)
         self.messages: list[dict] = []
@@ -39,6 +40,7 @@ class BaseAgent(FromDict):
             overall_limit=max_cost_overall, per_task_limit=max_cost_per_task
         )
         self.log_lm_calls = log_lm_calls
+        self.predicted_output_log_max_length = predicted_output_log_max_length
         logger_config = logger_config or {}
         logger_config["cost_tracker"] = self.cost_tracker
         self.logger = Logger(**logger_config)
@@ -118,8 +120,7 @@ class BaseAgent(FromDict):
         self, input_code: str, predicted_output: str, actual_output: str
     ) -> None:
         predicted_output = predicted_output or ""
-        actual_output = actual_output or ""
-        clipped_prediction = predicted_output[: len(actual_output)]
+        clipped_prediction = predicted_output[: self.predicted_output_log_max_length]
         self.predicted_environment_io.append(
             {"input": input_code, "output": clipped_prediction.rstrip()}
         )
