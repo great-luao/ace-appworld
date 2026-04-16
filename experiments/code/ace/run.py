@@ -83,25 +83,18 @@ def _classifier_output_is_complete(output_file_path: str, environment_log_path: 
     return output_line_count == environment_interaction_count and environment_interaction_count > 0
 
 
-def run_experiment(
-    experiment_name: str,
+def _resolve_task_ids(
     runner_config: dict[str, Any],
     task_id: str | None = None,
-    num_processes: int = 1,
-    process_index: int | None = 0,
-) -> None:
-    process_index = process_index or 0
-    num_processes = num_processes or 1
-    run_type = runner_config.pop("run_type")
-    agent_config = runner_config.pop("agent")
+    dataset_name_override: str | None = None,
+) -> list[str]:
     dataset_name = runner_config.pop("dataset", None)
+    if dataset_name_override is not None:
+        dataset_name = dataset_name_override
     sample_size = runner_config.pop("sample_size", None)
     custom_task_ids = runner_config.pop("task_ids", None)
-    num_epochs = runner_config.pop("num_epochs", 1)
-    skip_existing_outputs = runner_config.pop("skip_existing_outputs", False)
-
-    if runner_config:
-        raise Exception(f"Unexpected keys in the runner config: {runner_config}")
+    runner_config.pop("num_epochs", 1)
+    runner_config.pop("skip_existing_outputs", False)
 
     if task_id:
         task_ids = [task_id]
@@ -114,6 +107,27 @@ def run_experiment(
         task_ids = load_task_ids(dataset_name)
         if sample_size is not None:
             task_ids = task_ids[:sample_size]
+    return task_ids
+
+
+def run_experiment(
+    experiment_name: str,
+    runner_config: dict[str, Any],
+    task_id: str | None = None,
+    num_processes: int = 1,
+    process_index: int | None = 0,
+) -> None:
+    process_index = process_index or 0
+    num_processes = num_processes or 1
+    run_type = runner_config.pop("run_type")
+    agent_config = runner_config.pop("agent")
+    num_epochs = runner_config.pop("num_epochs", 1)
+    skip_existing_outputs = runner_config.pop("skip_existing_outputs", False)
+
+    task_ids = _resolve_task_ids(runner_config, task_id=task_id)
+
+    if runner_config:
+        raise Exception(f"Unexpected keys in the runner config: {runner_config}")
 
     if skip_existing_outputs:
         skip_reference_experiment_name = experiment_name

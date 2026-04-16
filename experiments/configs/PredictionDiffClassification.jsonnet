@@ -33,7 +33,7 @@ local classifier_model_config = {
             "max_history_chars": 100000,
             "log_lm_calls": true,
         },
-        "dataset": "train_difficulty_3",
+        "dataset": "train_difficulty_2",
         "skip_existing_outputs": true,
     }
 }

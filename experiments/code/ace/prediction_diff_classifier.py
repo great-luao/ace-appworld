@@ -37,6 +37,12 @@ ALLOWED_DIFF_CATEGORIES = {
     "wrong_action_or_failure_mode",
     "other",
 }
+DECISIVE_DIFF_CATEGORIES = {
+    "missing_decisive_information",
+    "value_or_state_mismatch",
+    "wrong_action_or_failure_mode",
+}
+BENIGN_DIFF_CATEGORIES = {"safe_abstraction"}
 
 
 class PredictionDiffClassifier(FromDict):
@@ -51,7 +57,8 @@ class PredictionDiffClassifier(FromDict):
         log_lm_calls: bool = True,
         prediction_trigger_text: str = PREDICTION_TRIGGER_TEXT,
     ):
-        self.classifier_model = LiteLLMGenerator(**classifier_model_config)
+        self.classifier_model_config = classifier_model_config
+        self.classifier_model: LiteLLMGenerator | None = None
         self.classifier_prompt_file_path = classifier_prompt_file_path
         self.classifier_prompt_template = read_file(
             classifier_prompt_file_path.replace("/", os.sep)
@@ -62,6 +69,11 @@ class PredictionDiffClassifier(FromDict):
         self.max_history_chars = max_history_chars
         self.log_lm_calls = log_lm_calls
         self.prediction_trigger_text = prediction_trigger_text
+
+    def _get_classifier_model(self) -> LiteLLMGenerator:
+        if self.classifier_model is None:
+            self.classifier_model = LiteLLMGenerator(**self.classifier_model_config)
+        return self.classifier_model
 
     def solve_tasks(
         self,
@@ -88,10 +100,34 @@ class PredictionDiffClassifier(FromDict):
             f"tasks={len(chunked_task_ids)} "
             f"(process {process_index + 1}/{num_processes})"
         )
-        task_summaries: list[dict[str, Any]] = []
-
         for task_id in chunked_task_ids:
-            summary = self.classify_task(task_id=task_id)
+            self.classify_task(task_id=task_id)
+
+    def analyze_tasks(
+        self,
+        task_ids: list[str],
+        dataset_name: str | None = None,
+        num_processes: int = 1,
+        process_index: int | None = 0,
+    ) -> None:
+        process_index = process_index or 0
+        num_processes = num_processes or 1
+        num_tasks = len(task_ids)
+        num_processes = min(num_processes, num_tasks) if num_tasks else 1
+        chunked_task_ids = (
+            chunk_and_return(task_ids, num_chunks=num_processes, chunk_index=process_index)
+            if task_ids
+            else []
+        )
+
+        print(
+            f"[prediction_diff_analysis] source_experiment={self.source_experiment_name} "
+            f"tasks={len(chunked_task_ids)} "
+            f"(process {process_index + 1}/{num_processes})"
+        )
+        task_summaries: list[dict[str, Any]] = []
+        for task_id in chunked_task_ids:
+            summary = self.load_existing_task_summary(task_id)
             if summary is not None:
                 task_summaries.append(summary)
 
@@ -100,6 +136,7 @@ class PredictionDiffClassifier(FromDict):
             task_ids=chunked_task_ids,
             process_index=process_index,
             num_processes=num_processes,
+            dataset_name=dataset_name,
         )
 
     def classify_task(self, task_id: str) -> dict[str, Any] | None:
@@ -137,7 +174,7 @@ class PredictionDiffClassifier(FromDict):
         os.makedirs(task_output_logs_dir, exist_ok=True)
         if self.log_lm_calls:
             classifier_lm_calls_path = os.path.join(task_output_logs_dir, "classifier_lm_calls.jsonl")
-            self.classifier_model.log_calls_to(file_path=classifier_lm_calls_path)
+            self._get_classifier_model().log_calls_to(file_path=classifier_lm_calls_path)
 
         interaction_records: list[dict[str, Any]] = []
         for interaction in interactions:
@@ -167,13 +204,38 @@ class PredictionDiffClassifier(FromDict):
             file_suffix=file_suffix,
         )
 
+    def load_existing_task_summary(self, task_id: str) -> dict[str, Any] | None:
+        source_logs_dir = self._source_logs_dir(task_id)
+        classification_path = os.path.join(source_logs_dir, "prediction_diff_classification.jsonl")
+        evaluation_report_path = self._source_evaluation_report_path(task_id)
+        if not os.path.exists(classification_path):
+            print(f"[prediction_diff_analysis] skip task={task_id}, missing file: {classification_path}")
+            return None
+
+        interaction_records = list(yield_jsonl(classification_path))
+        if not interaction_records:
+            print(
+                f"[prediction_diff_analysis] skip task={task_id}, empty classification file: "
+                f"{classification_path}"
+            )
+            return None
+
+        evaluation_summary = self.parse_evaluation_report(evaluation_report_path)
+        return self.build_task_summary(
+            task_id=task_id,
+            interaction_records=interaction_records,
+            evaluation_summary=evaluation_summary,
+        )
+
     def classify_interaction(
         self,
         task_id: str,
         interaction: dict[str, Any],
     ) -> dict[str, Any]:
         prompt = self.render_classifier_prompt(task_id=task_id, interaction=interaction)
-        model_output = self.classifier_model.generate(messages=[{"role": "user", "content": prompt}])
+        model_output = self._get_classifier_model().generate(
+            messages=[{"role": "user", "content": prompt}]
+        )
         raw_response = model_output.get("content") or ""
         parsed_response = extract_json_from_text(raw_response) or {}
 
@@ -462,8 +524,19 @@ class PredictionDiffClassifier(FromDict):
     ) -> dict[str, Any]:
         board_counter = Counter(record["primary_board"] for record in interaction_records)
         diff_counter = Counter(record["diff_category"] for record in interaction_records)
+        board_diff_counter = Counter(
+            f"{record['primary_board']}::{record['diff_category']}" for record in interaction_records
+        )
         non_match_count = sum(
             1 for record in interaction_records if record["diff_category"] != "match"
+        )
+        decisive_mismatch_count = sum(
+            1
+            for record in interaction_records
+            if record["diff_category"] in DECISIVE_DIFF_CATEGORIES
+        )
+        benign_abstraction_count = sum(
+            1 for record in interaction_records if record["diff_category"] in BENIGN_DIFF_CATEGORIES
         )
         interaction_count = len(interaction_records)
         return {
@@ -477,8 +550,17 @@ class PredictionDiffClassifier(FromDict):
             "non_match_ratio": (
                 non_match_count / interaction_count if interaction_count > 0 else None
             ),
+            "decisive_mismatch_count": decisive_mismatch_count,
+            "decisive_mismatch_ratio": (
+                decisive_mismatch_count / interaction_count if interaction_count > 0 else None
+            ),
+            "benign_abstraction_count": benign_abstraction_count,
+            "benign_abstraction_ratio": (
+                benign_abstraction_count / interaction_count if interaction_count > 0 else None
+            ),
             "primary_board_counts": dict(board_counter),
             "diff_category_counts": dict(diff_counter),
+            "board_diff_counts": dict(board_diff_counter),
         }
 
     def write_aggregate_outputs(
@@ -487,6 +569,7 @@ class PredictionDiffClassifier(FromDict):
         task_ids: list[str],
         process_index: int,
         num_processes: int,
+        dataset_name: str | None = None,
     ) -> None:
         aggregate_suffix = self.build_aggregate_suffix(task_summaries)
         analysis_dir = os.path.join(
@@ -504,6 +587,7 @@ class PredictionDiffClassifier(FromDict):
         stats["metadata"] = {
             "generated_at_utc": datetime.utcnow().isoformat(),
             "source_experiment_name": self.source_experiment_name,
+            "dataset_name": dataset_name,
             "processed_task_count": len(task_summaries),
             "requested_task_count": len(task_ids),
             "process_index": process_index,
@@ -535,6 +619,10 @@ class PredictionDiffClassifier(FromDict):
                 "passed_task_count": 0,
                 "failed_task_count": 0,
                 "feature_stats": [],
+                "informative_feature_stats": [],
+                "robust_informative_feature_stats": [],
+                "board_diff_feature_stats": [],
+                "robust_board_diff_feature_stats": [],
             }
 
         failed_task_ids = {
@@ -564,33 +652,66 @@ class PredictionDiffClassifier(FromDict):
             ),
             reverse=True,
         )
+        informative_feature_stats = [
+            item
+            for item in feature_stats
+            if 0 < item.get("tasks_with_feature", 0) < len(task_summaries)
+        ]
+        robust_informative_feature_stats = [
+            item
+            for item in informative_feature_stats
+            if item.get("tasks_with_feature", 0) >= 2 and item.get("tasks_without_feature", 0) >= 2
+        ]
+        board_diff_feature_stats = [
+            item for item in informative_feature_stats if item.get("feature_group") == "board_diff"
+        ]
+        robust_board_diff_feature_stats = [
+            item
+            for item in board_diff_feature_stats
+            if item.get("tasks_with_feature", 0) >= 2 and item.get("tasks_without_feature", 0) >= 2
+        ]
 
         return {
             "task_count": len(task_summaries),
             "passed_task_count": len(passed_task_ids),
             "failed_task_count": len(failed_task_ids),
             "feature_stats": feature_stats,
+            "informative_feature_stats": informative_feature_stats,
+            "robust_informative_feature_stats": robust_informative_feature_stats,
+            "board_diff_feature_stats": board_diff_feature_stats,
+            "robust_board_diff_feature_stats": robust_board_diff_feature_stats,
         }
 
     def collect_feature_names(self, task_summaries: list[dict[str, Any]]) -> list[str]:
         names = set()
         for summary in task_summaries:
             names.add("non_match_count")
+            names.add("decisive_mismatch_count")
+            names.add("benign_abstraction_count")
             for key in summary.get("primary_board_counts", {}).keys():
                 names.add(f"primary_board::{key}")
             for key in summary.get("diff_category_counts", {}).keys():
                 names.add(f"diff_category::{key}")
+            for key in summary.get("board_diff_counts", {}).keys():
+                names.add(f"board_diff::{key}")
         return sorted(names)
 
     def get_feature_count(self, task_summary: dict[str, Any], feature_name: str) -> int:
         if feature_name == "non_match_count":
             return int(task_summary.get("non_match_count") or 0)
+        if feature_name == "decisive_mismatch_count":
+            return int(task_summary.get("decisive_mismatch_count") or 0)
+        if feature_name == "benign_abstraction_count":
+            return int(task_summary.get("benign_abstraction_count") or 0)
         if feature_name.startswith("primary_board::"):
             key = feature_name.split("::", 1)[1]
             return int(task_summary.get("primary_board_counts", {}).get(key, 0))
         if feature_name.startswith("diff_category::"):
             key = feature_name.split("::", 1)[1]
             return int(task_summary.get("diff_category_counts", {}).get(key, 0))
+        if feature_name.startswith("board_diff::"):
+            key = feature_name.split("::", 1)[1]
+            return int(task_summary.get("board_diff_counts", {}).get(key, 0))
         return 0
 
     def compute_feature_stat_row(
@@ -611,6 +732,21 @@ class PredictionDiffClassifier(FromDict):
         odds_ratio = ((a + 0.5) * (d + 0.5)) / ((b + 0.5) * (c + 0.5))
         failed_counts = [count for count, failed in zip(counts, failures) if failed == 1]
         passed_counts = [count for count, failed in zip(counts, failures) if failed == 0]
+        interaction_counts = [int(item.get("interaction_count") or 0) for item in task_summaries]
+        failed_ratios = [
+            count / total
+            for count, total, failed in zip(counts, interaction_counts, failures)
+            if failed == 1 and total > 0
+        ]
+        passed_ratios = [
+            count / total
+            for count, total, failed in zip(counts, interaction_counts, failures)
+            if failed == 0 and total > 0
+        ]
+        all_ratios = [
+            (count / total) if total > 0 else 0.0
+            for count, total in zip(counts, interaction_counts)
+        ]
         mean_count_failed = (
             sum(failed_counts) / len(failed_counts) if len(failed_counts) > 0 else None
         )
@@ -618,9 +754,17 @@ class PredictionDiffClassifier(FromDict):
             sum(passed_counts) / len(passed_counts) if len(passed_counts) > 0 else None
         )
         spearman = self.spearman_correlation(counts, failures)
+        spearman_ratio = self.spearman_correlation(all_ratios, failures)
+        mean_ratio_failed = (
+            sum(failed_ratios) / len(failed_ratios) if len(failed_ratios) > 0 else None
+        )
+        mean_ratio_passed = (
+            sum(passed_ratios) / len(passed_ratios) if len(passed_ratios) > 0 else None
+        )
 
         return {
             "feature_name": feature_name,
+            "feature_group": self.feature_group(feature_name),
             "tasks_with_feature": a + b,
             "tasks_without_feature": c + d,
             "failed_with_feature": a,
@@ -637,17 +781,35 @@ class PredictionDiffClassifier(FromDict):
             "odds_ratio": odds_ratio,
             "mean_count_failed_tasks": mean_count_failed,
             "mean_count_passed_tasks": mean_count_passed,
+            "mean_ratio_failed_tasks": mean_ratio_failed,
+            "mean_ratio_passed_tasks": mean_ratio_passed,
             "spearman_count_vs_failure": spearman,
+            "spearman_ratio_vs_failure": spearman_ratio,
         }
 
-    def spearman_correlation(self, x_values: list[int], y_values: list[int]) -> float | None:
+    def feature_group(self, feature_name: str) -> str:
+        if feature_name in {
+            "non_match_count",
+            "decisive_mismatch_count",
+            "benign_abstraction_count",
+        }:
+            return "derived"
+        if feature_name.startswith("primary_board::"):
+            return "primary_board"
+        if feature_name.startswith("diff_category::"):
+            return "diff_category"
+        if feature_name.startswith("board_diff::"):
+            return "board_diff"
+        return "other"
+
+    def spearman_correlation(self, x_values: list[int | float], y_values: list[int]) -> float | None:
         if len(x_values) != len(y_values) or len(x_values) < 2:
             return None
         x_ranks = self.rank_with_ties(x_values)
         y_ranks = self.rank_with_ties(y_values)
         return self.pearson_correlation(x_ranks, y_ranks)
 
-    def rank_with_ties(self, values: list[int]) -> list[float]:
+    def rank_with_ties(self, values: list[int | float]) -> list[float]:
         indexed = sorted(enumerate(values), key=lambda item: item[1])
         ranks = [0.0] * len(values)
         index = 0
@@ -677,6 +839,15 @@ class PredictionDiffClassifier(FromDict):
         return numerator / (x_denom * y_denom)
 
     def render_markdown_report(self, stats: dict[str, Any]) -> str:
+        informative_feature_stats = stats.get("robust_informative_feature_stats") or stats.get(
+            "informative_feature_stats", []
+        )
+        board_diff_feature_stats = stats.get("robust_board_diff_feature_stats") or stats.get(
+            "board_diff_feature_stats", []
+        )
+        atomic_feature_stats = [
+            row for row in informative_feature_stats if row.get("feature_group") != "board_diff"
+        ]
         lines = [
             "# Prediction Diff Statistical Analysis",
             "",
@@ -684,21 +855,48 @@ class PredictionDiffClassifier(FromDict):
             f"- passed_task_count: {stats.get('passed_task_count', 0)}",
             f"- failed_task_count: {stats.get('failed_task_count', 0)}",
             "",
-            "## Top Failure-Associated Features",
+            "## Top Informative Atomic Features",
             "",
-            "| feature | fail_rate_with | fail_rate_without | lift | odds_ratio | spearman |",
-            "|---|---:|---:|---:|---:|---:|",
+            "| feature | tasks_with | lift | odds_ratio | mean_count_failed | mean_count_passed | mean_ratio_failed | mean_ratio_passed | spearman_count | spearman_ratio |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
         ]
-        feature_stats = stats.get("feature_stats", [])
-        for row in feature_stats[:30]:
+        for row in atomic_feature_stats[:20]:
             lines.append(
-                "| {feature} | {with_rate} | {without_rate} | {lift} | {or_} | {rho} |".format(
+                "| {feature} | {tasks_with} | {lift} | {or_} | {mean_failed} | {mean_passed} | {ratio_failed} | {ratio_passed} | {rho_count} | {rho_ratio} |".format(
                     feature=row.get("feature_name"),
-                    with_rate=self.format_number(row.get("failure_rate_with_feature")),
-                    without_rate=self.format_number(row.get("failure_rate_without_feature")),
+                    tasks_with=row.get("tasks_with_feature"),
                     lift=self.format_number(row.get("failure_rate_lift")),
                     or_=self.format_number(row.get("odds_ratio")),
-                    rho=self.format_number(row.get("spearman_count_vs_failure")),
+                    mean_failed=self.format_number(row.get("mean_count_failed_tasks")),
+                    mean_passed=self.format_number(row.get("mean_count_passed_tasks")),
+                    ratio_failed=self.format_number(row.get("mean_ratio_failed_tasks")),
+                    ratio_passed=self.format_number(row.get("mean_ratio_passed_tasks")),
+                    rho_count=self.format_number(row.get("spearman_count_vs_failure")),
+                    rho_ratio=self.format_number(row.get("spearman_ratio_vs_failure")),
+                )
+            )
+        lines.extend(
+            [
+                "",
+                "## Top Board-Diff Patterns",
+                "",
+                "| feature | tasks_with | lift | odds_ratio | mean_count_failed | mean_count_passed | mean_ratio_failed | mean_ratio_passed | spearman_count | spearman_ratio |",
+                "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+            ]
+        )
+        for row in board_diff_feature_stats[:20]:
+            lines.append(
+                "| {feature} | {tasks_with} | {lift} | {or_} | {mean_failed} | {mean_passed} | {ratio_failed} | {ratio_passed} | {rho_count} | {rho_ratio} |".format(
+                    feature=row.get("feature_name"),
+                    tasks_with=row.get("tasks_with_feature"),
+                    lift=self.format_number(row.get("failure_rate_lift")),
+                    or_=self.format_number(row.get("odds_ratio")),
+                    mean_failed=self.format_number(row.get("mean_count_failed_tasks")),
+                    mean_passed=self.format_number(row.get("mean_count_passed_tasks")),
+                    ratio_failed=self.format_number(row.get("mean_ratio_failed_tasks")),
+                    ratio_passed=self.format_number(row.get("mean_ratio_passed_tasks")),
+                    rho_count=self.format_number(row.get("spearman_count_vs_failure")),
+                    rho_ratio=self.format_number(row.get("spearman_ratio_vs_failure")),
                 )
             )
         lines.append("")

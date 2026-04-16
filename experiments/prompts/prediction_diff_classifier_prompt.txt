@@ -19,10 +19,11 @@ Your task is to classify one interaction: how the model's predicted environment 
 **Tie-break Rules**
 - If the current code both fetches new external data and performs local processing in the same block, classify by the main purpose of the step. Prefer `read_fetch` over `local_reasoning` when the code retrieves new API data in that same interaction.
 - If the current code mixes docs inspection with immediate access-establishing behavior, prefer `auth` when the main purpose is getting credentials or a token.
-- If the prediction is shorter than the actual output, use `safe_abstraction` only when the omitted details are clearly not needed for the next step.
+- If the prediction is shorter than the actual output, use `safe_abstraction` only when an agent that saw only the predicted output would still be able to choose the same immediate next code action as if it had seen the actual output.
 - If the actual output contains ids, timestamps, statuses, tokens, or nested actor fields that would plausibly be needed for follow-up filtering, control flow, or API calls, do not use `safe_abstraction`; use `missing_decisive_information`.
 - If predicted and actual disagree on whether the code execution succeeded, failed, or produced a side effect, prefer `wrong_action_or_failure_mode`.
 - If the main issue is wrong field names, wrong API names, wrong parameter names, or wrong response structure, prefer `schema_or_name_mismatch` even if the content sounds plausible.
+- Do not use `schema_or_name_mismatch` as a catch-all for every non-match. If the schema is broadly usable but the prediction omits decision-relevant content, prefer `missing_decisive_information` or `value_or_state_mismatch`.
 - Use `other` only after you have considered the named categories and still cannot place the case cleanly.
 
 **Taxonomy**
@@ -102,13 +103,14 @@ Interpretation rules:
 
 2. `safe_abstraction`
 Definition:
-The prediction is less detailed than reality, but still preserves the operationally necessary information for the next step.
+The prediction is less detailed than reality, but still preserves enough information that the same immediate next code action would likely be chosen.
 Interpretation rules:
-- Use this when the prediction compresses the response safely.
-- Do not use this if the omitted details would matter for filtering, control flow, or action selection.
+- Use this only when the prediction compresses the response safely enough that an agent with only the predicted output would still make the same immediate next move.
+- Do not use this if the omitted details would matter for filtering, control flow, action selection, or argument construction in the next step.
+- Be especially conservative for auth, write, and completion steps: if ids, tokens, paths, statuses, or other follow-up fields are omitted, prefer `missing_decisive_information`.
 Examples:
-- Predicting "success" when the real output is "success" plus an id payload.
-- Predicting a shorter schema preview that still preserves the decisive fields.
+- Predicting "success" when the real output is "success" plus extra payload that is clearly irrelevant to the next step.
+- Predicting a shorter schema preview that still preserves the exact decisive fields the agent would immediately use.
 
 3. `schema_or_name_mismatch`
 Definition:
@@ -116,6 +118,7 @@ The prediction gets names or structure wrong.
 Interpretation rules:
 - Use this for wrong field names, API names, parameter names, response keys, nesting shape, or object/list structure.
 - The content may be plausible, but the interface representation is wrong.
+- Do not use this just because the prediction is shorter or partial. If the main problem is omitted decision-relevant content rather than wrong interface representation, prefer `missing_decisive_information` or `value_or_state_mismatch`.
 Examples:
 - Predicting `playlist_id` when the real field is `id`.
 - Predicting a flat object when the real output is a list of objects.
