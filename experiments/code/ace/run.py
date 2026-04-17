@@ -8,6 +8,7 @@ from appworld_experiments.code.ace.adaptation_agent import StarAgent
 from appworld_experiments.code.ace.base_agent import BaseAgent
 from appworld_experiments.code.ace.evaluation_agent import Agent
 from appworld_experiments.code.ace.prediction_diff_classifier import PredictionDiffClassifier
+from appworld_experiments.code.ace.prediction_diff_curator import PredictionDiffCurator
 
 
 def _build_prediction_diff_agent(agent_config: dict[str, Any]) -> PredictionDiffClassifier:
@@ -19,6 +20,17 @@ def _build_prediction_diff_agent(agent_config: dict[str, Any]) -> PredictionDiff
             "Expected 'prediction_diff_classifier'."
         )
     return PredictionDiffClassifier(**config)
+
+
+def _build_prediction_diff_curator(agent_config: dict[str, Any]) -> PredictionDiffCurator:
+    config = copy.deepcopy(agent_config)
+    config_type = config.pop("type", None)
+    if config_type and config_type != "prediction_diff_curator":
+        raise ValueError(
+            f"Invalid curator agent type: {config_type}. "
+            "Expected 'prediction_diff_curator'."
+        )
+    return PredictionDiffCurator(**config)
 
 
 def _filter_existing_output_task_ids(
@@ -124,6 +136,15 @@ def run_experiment(
     num_epochs = runner_config.pop("num_epochs", 1)
     skip_existing_outputs = runner_config.pop("skip_existing_outputs", False)
 
+    if run_type == "prediction-diff-curation":
+        if num_epochs != 1:
+            raise ValueError("prediction-diff-curation only supports num_epochs=1.")
+        if skip_existing_outputs:
+            raise ValueError(
+                "prediction-diff-curation does not support skip_existing_outputs because "
+                "playbook updates are sequential across tasks."
+            )
+
     task_ids = _resolve_task_ids(runner_config, task_id=task_id)
 
     if runner_config:
@@ -166,6 +187,8 @@ def run_experiment(
         agent = BaseAgent.from_dict(agent_config)
     elif run_type == "prediction-diff-classification":
         agent = _build_prediction_diff_agent(agent_config)
+    elif run_type == "prediction-diff-curation":
+        agent = _build_prediction_diff_curator(agent_config)
     else:
         raise ValueError(f"Unknown run_type: {run_type}")
 
