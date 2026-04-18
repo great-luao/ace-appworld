@@ -30,8 +30,8 @@ local generator_model_config = {
                 "random_seed": 123,
             },
             "logger_config": {
-                "color": true,
-                "verbose": true,
+                "color": false,
+                "verbose": false,
             },
             "generator_prompt_file_path": experiment_prompts_path + "/react.txt",
             "ignore_multiple_calls": true,
@@ -46,7 +46,7 @@ local generator_model_config = {
             "max_prompt_length": 200000,
             "max_output_length": 100000,
         },
-        "dataset": "train_difficulty_2",
+        "dataset": "train_difficulty_1",
         "skip_existing_outputs": true,
     }
 }

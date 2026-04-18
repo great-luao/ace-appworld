@@ -58,6 +58,7 @@ class PredictionDiffCurator(FromDict):
         self.prediction_trigger_text = prediction_trigger_text
         self.playbook = ""
         self.next_global_id = 1
+        self.current_task_index = 0
 
     def _get_curator_model(self) -> LiteLLMGenerator:
         if self.curator_model is None:
@@ -82,8 +83,11 @@ class PredictionDiffCurator(FromDict):
             f"[prediction_diff_curation] source_experiment={self.source_experiment_name} "
             f"tasks={len(task_ids)} playbook={self.trained_playbook_file_path}"
         )
-        for task_id in task_ids:
+        for task_index, task_id in enumerate(task_ids):
+            self.current_task_index = task_index
             self.curate_task(task_id)
+            if (self.current_task_index + 1) % 30 == 0:
+                self.save_playbook_snapshot()
 
     def initialize_playbook(self) -> None:
         if os.path.exists(self.initial_playbook_file_path):
@@ -431,6 +435,21 @@ class PredictionDiffCurator(FromDict):
         os.makedirs(os.path.dirname(self.trained_playbook_file_path), exist_ok=True)
         with open(self.trained_playbook_file_path, "w", encoding="utf-8") as file:
             file.write(self.playbook)
+
+    def save_playbook_snapshot(self) -> None:
+        if not self.trained_playbook_file_path:
+            raise ValueError("trained_playbook_file_path is not set")
+        snapshot_file_path = (
+            self.trained_playbook_file_path.split(".txt")[0]
+            + str(self.current_task_index + 1)
+            + ".txt"
+        )
+        with open(snapshot_file_path, "w", encoding="utf-8") as file:
+            file.write(self.playbook)
+        print(
+            f"Saved playbook snapshot at task {self.current_task_index + 1}: "
+            f"{snapshot_file_path}"
+        )
 
     def _source_logs_dir(self, task_id: str) -> str:
         return os.path.join(

@@ -29,7 +29,7 @@ local curator_model_config = {
             "curator_model_config": curator_model_config,
             "curator_prompt_file_path": experiment_prompts_path + "/appworld_react_curator_with_classification_prompt.txt",
             "initial_playbook_file_path": experiment_playbooks_path + "/appworld_initial_playbook.txt",
-            "trained_playbook_file_path": experiment_playbooks_path + "/appworld_prediction_diff_curated_playbook.txt",
+            "trained_playbook_file_path": experiment_playbooks_path + "/appworld_prediction_diff_curated_playbook_train_full.txt",
             "source_experiment_name": "ReAct_non_ACE_evaluation",
             "classification_file_name": "prediction_diff_classification.jsonl",
             "max_field_chars": 100000,

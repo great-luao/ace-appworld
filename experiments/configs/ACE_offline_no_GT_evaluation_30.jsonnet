@@ -37,7 +37,7 @@ local generator_model_config = {
                 "verbose": false,
             },
             "generator_prompt_file_path": experiment_prompts_path + "/appworld_react_generator_prompt.txt",
-            "trained_playbook_file_path": experiment_playbooks_path + "/appworld_offline_trained_no_gt_playbook_diff3.txt",  
+            "trained_playbook_file_path": experiment_playbooks_path + "/appworld_offline_trained_no_gt_playbook_deepseek_3_130.txt",
             "ignore_multiple_calls": true,
             "max_steps": 40,
             "max_cost_overall": 1000,
@@ -45,5 +45,6 @@ local generator_model_config = {
             "log_lm_calls": false,
         },
         "dataset": "test_normal",
+        "skip_existing_outputs": true,
     }
 }

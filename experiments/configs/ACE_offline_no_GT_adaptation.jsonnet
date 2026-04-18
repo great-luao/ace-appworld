@@ -78,7 +78,7 @@ local curator_model_config = {
             "reflector_prompt_file_path": experiment_prompts_path + "/appworld_react_reflector_no_gt_prompt.txt",
             "curator_prompt_file_path": experiment_prompts_path + "/appworld_react_curator_prompt.txt", 
             "initial_playbook_file_path": experiment_playbooks_path + "/appworld_initial_playbook.txt", 
-            "trained_playbook_file_path": experiment_playbooks_path + "/appworld_offline_trained_no_gt_playbook_deepseek_3_1.txt",  
+            "trained_playbook_file_path": experiment_playbooks_path + "/appworld_offline_trained_no_gt_playbook_diff3.txt",  
             "ignore_multiple_calls": true,
             "max_steps": 40,
             "max_cost_overall": 1000,
@@ -86,7 +86,7 @@ local curator_model_config = {
             "log_lm_calls": true,
             "use_gt_code": false
         },
-        "dataset": "train",
+        "dataset": "train_difficulty_3",
         "num_epochs": 1,
     }
 }

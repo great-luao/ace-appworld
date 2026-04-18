@@ -1,0 +1,154 @@
+## STRATEGIES AND HARD RULES
+[shr-00001] Make sure to end code blocks with ``` followed by a newline(\n).
+[shr-00005] Always look at API specifications (using apis.api_docs.show_api_doc) before calling an API.
+[shr-00006] Write small chunks of code and only one chunk of code in every step. Make sure everything is working correctly before making any irreversible change.
+
+[shr-00012] Inspect every API doc before first use, without exception.
+- This includes routine or familiar endpoints such as `file_system.login` and `supervisor.complete_task`, not just task-specific business APIs.
+- Do not rely on memory or prior tasks for parameter names, login usernames, defaults, or response shapes.
+[shr-00014] Before using an unfamiliar app for a new kind of operation, inspect `apis.api_docs.show_api_descriptions(app_name=...)` to discover the exact endpoint names instead of guessing from intuition. This is especially important for routine file operations; do not invent names like `write_file` or `read_file` without verifying the app's API list first.
+[shr-00018] Do not batch independent API inspections or auth calls into one execution step.
+- Even when several docs or logins are all needed, inspect one endpoint at a time and perform one app login at a time in separate code blocks.
+- This keeps each step easier to verify and aligns with the 'small chunks' rule before any later mutations.
+## APIs TO USE FOR SPECIFIC INFORMATION
+[api-00004] You can use the "supervisor" app to get information about my accounts and use the "phone" app to get information about friends and family.
+
+[api-00009] For Spotify song exports, use the canonical song endpoint when nested song objects are partial.
+- `show_song_library(access_token, page_index=...)` returns full song objects with `song_id`, `title`, and full `artists`.
+- `show_album_library(...)` and `show_playlist_library(...)` include only album/playlist summaries with `song_ids`.
+- `show_album(album_id)` returns album-level `artists`, but each song entry has only `id`, `title`, and `artist_ids`.
+- `show_playlist(playlist_id, access_token)` returns playlist song entries with only `id`, `title`, and `artist_ids`.
+- `show_song(song_id)` returns the authoritative full song object, including the complete `artists` list.
+Do not reconstruct per-song artist names from album-level artist metadata unless the schema explicitly guarantees it; fetch `show_song(song_id)` for any song whose full artists are not already present.
+[api-00013] For Spotify playlist coverage, verify public/private semantics explicitly.
+- `show_playlist_library(access_token, is_public=..., page_index=...)` supports an optional `is_public` filter.
+- If the task asks for "all playlists" and the docs do not guarantee that omitting `is_public` returns both public and private playlists, fetch both `is_public=True` and `is_public=False` (with pagination) and deduplicate by `playlist_id`.
+[api-00015] For File System backups, use the exact file APIs and response shapes from the docs.
+- `create_directory(directory_path, access_token, recursive=False)` creates directories.
+- `file_exists(file_path, access_token)` returns `{ "exists": true/false }`.
+- `create_file(file_path, access_token, content="", overwrite=False)` creates a file.
+- `update_file(file_path, content, access_token)` updates file contents.
+- `show_file(file_path, access_token)` returns file metadata including `{ "file_id", "path", "content", ... }`.
+Do not assume generic endpoints such as `write_file`/`read_file`; use `create_file`/`update_file`/`show_file` as documented.
+[api-00017] For coworker/payment targeting across Phone and Venmo, use these authoritative schemas and filters.
+- `phone.search_contacts(access_token, relationship=..., page_index=..., page_limit=...)` returns full contact objects including `email`, `phone_number`, and `relationships`; use `relationship='coworker'` and paginate until empty.
+- `phone.get_current_date_and_time()` returns an object with `date` and `time`.
+- `venmo.show_transactions(access_token, user_email=..., min_created_at=..., max_created_at=..., direction=..., page_index=..., page_limit=...)` returns transaction summary objects with `transaction_id`, `created_at`, `sender.email`, `receiver.email`, `like_count`, and `comment_count`.
+- For received payments from a relationship group, filter with `direction='received'` and match `sender.email` against the contact-email set.
+[api-00020] For roommate-payment tasks across Phone and Venmo, use the same authoritative relationship-resolution pattern as other relationship groups.
+- `phone.search_contacts(access_token, relationship='roommate', page_index=..., page_limit=..., query=...)` returns full contact objects including `email`; paginate until empty and build the roommate email set from these contacts.
+- Do not infer roommates from Venmo names, descriptions, or prior transactions when the Phone relationship data is available.
+[api-00021] For Venmo social mutations, verify success using the exact response schemas.
+- `venmo.create_transaction_comment(transaction_id, comment, access_token)` returns `{ "message": "Transaction comment created.", "comment_id": ... }` on success.
+- `venmo.like_transaction(transaction_id, access_token)` returns `{ "message": "Liked transaction." }` on success.
+[api-00025] For Venmo payment-request tasks, use the exact mutation success schema.
+- `venmo.create_payment_request(user_email, amount, access_token, description='', private=false)` returns `{ "message": "Payment request created.", "payment_request_id": ... }` on success.
+- Verify the success message and retain the `payment_request_id` for confirmation/audit.
+[api-00027] For Venmo duplicate-avoidance on outgoing requests, use the exact sent-request schema.
+- `venmo.show_sent_payment_requests(access_token, status=..., page_index=..., page_limit=...)` returns request objects including `payment_request_id`, `amount`, `description`, `sender`, and `receiver`.
+- For pending-request deduplication before `create_payment_request`, compare at least `(receiver.email, amount, description)` against the pending sent-request list.
+[api-00032] For File System directory reorganization tasks, use the exact listing/metadata/move schemas.
+- `file_system.show_directory(access_token, directory_path, recursive=False, ...)` returns a list of path strings, not file objects with metadata.
+- If classification depends on file timestamps or other metadata, call `file_system.show_file(file_path, access_token)` for each file to obtain fields such as `created_at`.
+- `file_system.move_file(source_file_path, destination_file_path, access_token, overwrite=False, retain_dates=False)` supports `retain_dates=True` when original timestamps should be preserved and returns `{ "message": "File moved.", "destination_file_path": ... }` on success.
+[api-00036] For Spotify playlist runtime checks, use song durations from the canonical song endpoint rather than playlist song counts.
+- `spotify.show_playlist_library(...)` returns playlist summaries with `song_ids`, but those IDs do not encode runtime.
+- `spotify.show_playlist(...)` returns partial song entries (`id`, `title`, `artist_ids`) and does not include duration.
+- When a task asks whether a playlist is long enough for a time-based need (for example a workout), fetch each song via `spotify.show_song(song_id)` and sum the song duration field from that authoritative response.
+- Do not use `len(song_ids)` or number of tracks as a proxy for playback length.
+[api-00040] Use the documented `supervisor.complete_task` schema exactly.
+- `supervisor.complete_task(answer=None, status='success'|'fail')` accepts an optional concise `answer` and an optional `status`.
+- Pass `answer` only when the task explicitly asks for an answer (for example a number, name, or yes/no).
+- For non-question action tasks, leave `answer` unset on both success and failure unless the environment explicitly requires otherwise.
+[api-00041] For Spotify playlist-selection tasks, treat the saved playlist library as only the first candidate pool unless the task explicitly restricts you to library playlists.
+- `spotify.search_playlists(query, access_token, page_index=..., page_limit=...)` searches across all public playlists and the user's own private playlists.
+- If no playlist in `show_playlist_library(...)` is sufficient for the task, inspect and use `search_playlists` as the fallback discovery route rather than assuming the task is impossible.
+- Evaluate any playlist found via search with the same authoritative runtime method: `show_playlist(...)` for song IDs, then `show_song(song_id)` for durations, before calling `play_music(...)`.
+## USEFUL CODE SNIPPETS AND TEMPLATES
+
+## COMMON MISTAKES AND CORRECT STRATEGIES
+
+[cms-00029] When a note contains the actionable source data (for example person-to-amount shares), parse it from `simple_note.show_note(...)["content"]` instead of manually retyping or hard-coding the visible entries.
+- Treat the note body as the source of truth.
+- Build the `(person_label, amount)` pairs from the content first, then map labels to authoritative contacts and continue with payment logic.
+- This reduces transcription errors and keeps the workflow robust if names or amounts differ from expectations.
+[cms-00044] When a bill/receipt file contains the amount to charge or split, parse the amount directly from `file_system.show_file(...)["content"]` instead of manually retyping the visible total.
+- Treat the document content as the source of truth for amounts such as `Total Amount => $119`.
+- This avoids transcription mistakes and keeps the workflow robust if the amount or formatting differs from what was visually expected.
+## PROBLEM-SOLVING HEURISTICS AND WORKFLOWS
+[psw-00002] Remember you can use the variables in your code in subsequent code blocks.
+[psw-00007] Many APIs return items in "pages". Make sure to run through all the pages by looping over `page_index`.
+
+## VERIFICATION CHECKLIST
+
+[vc-00010] Before completing tasks with irreversible actions (e.g. `spotify.delete_account`), perform them in a separate final step after backup/output verification, inspect the deletion response for success, and only then call `apis.supervisor.complete_task()`. Do not bundle account deletion and task completion in the same code block.
+[vc-00016] Before irreversible transaction social actions (for example `venmo.create_transaction_comment` or `venmo.like_transaction`), print and review the final target set immediately before writing.
+- Verify the exact `transaction_id`, `created_at`, `sender.email`, `receiver.email`, and any task-relevant fields (such as direction/date window) match the request.
+- Do not rely only on an earlier filtered list that 'looks right'; perform one explicit final confirmation pass right before mutation.
+[vc-00019] Before the final completion step, inspect `supervisor.complete_task` documentation if it has not yet been inspected in the current task.
+- Treat routine completion endpoints the same as task-specific APIs; do not rely on memory for whether `answer` is required or optional.
+[vc-00022] When multiple notes could satisfy a task, explicitly validate the chosen note against the task timeframe and title semantics before using it.
+- For date-relative requests like 'yesterday', derive the date first (for example via `phone.get_current_date_and_time()`), then compare candidate note `created_at`/title context instead of selecting the first plausible search result.
+- `simple_note.search_notes(...)` returns note summaries only; inspect the final candidate with `simple_note.show_note(note_id, access_token)` before treating it as the source of truth.
+[vc-00023] If note entries identify people only by first name or another partial label, verify that each label maps uniquely to exactly one authoritative contact before any payment mutation.
+- Build the contact map from `phone.search_contacts(...)` results.
+- If a first name is duplicated or missing in the relevant contact set, do not guess; gather more evidence before creating requests.
+[vc-00024] Before creating Venmo payment requests, consider checking for already-existing outgoing payment requests for the same recipient and event to avoid duplicates.
+- This is especially important when the task only says some people have already paid, because prior requests may already exist for unpaid people.
+- Review the final recipient email, amount, and event description against existing sent requests before writing.
+[vc-00028] For date-relative tasks such as 'yesterday', compute the target date programmatically from `phone.get_current_date_and_time()` instead of hard-coding a literal date after inspection.
+- `phone.get_current_date_and_time()` returns a human-readable date string like `Saturday, May 20, 2023`; convert it to the calendar date needed by downstream filters.
+- When an API expects `YYYY-MM-DD` (for example Venmo `min_created_at` / `max_created_at`), derive that exact string from the returned current date and subtract one day in code.
+[vc-00030] For task instructions that use relative temporal language beyond explicit dates (for example, 'this year', 'this month', or similar), do not substitute a guessed literal year/month from observed data.
+- Derive the timeframe from an authoritative current-date source when available, or explicitly validate the inferred timeframe before filtering/classifying items.
+- Do not let a dataset pattern (for example, all recent files happen to be from 2023) become the silent source of truth for the task's temporal condition.
+[vc-00031] Before irreversible file-system mutations such as bulk `move_file(...)` operations, print and review the final move/copy plan immediately before execution.
+- Use a JSON-serializable structure containing at least the source path, destination path, and the task-relevant classification basis (for example `created_at` or derived bucket).
+- Prefer a staged flow: create/verify destination directories, print the final plan, then execute moves.
+[vc-00033] For relative-time conditions such as 'this year' or 'this month', parse the authoritative current-date response and use the parsed value directly in classification/filter logic.
+- Do not stop at visually confirming the year/month and then hard-coding a literal.
+- Treat the current-date API output as the actual source of truth all the way through the final condition checks.
+[vc-00034] After bulk file-system mutations (for example many `move_file(...)` calls), perform a lightweight post-mutation verification before completing the task.
+- At minimum, confirm that returned `destination_file_path` values match the intended plan; optionally list destination directories to spot-check final contents.
+- This complements the pre-mutation plan review and helps catch partial or misrouted moves.
+[vc-00035] After all task work and verification are done, ensure the final `apis.supervisor.complete_task(...)` call is actually executed and its success response is observed in the environment output.
+- Do not stop at drafting or printing the completion call.
+- Treat task completion as an explicit final action that must itself be verified, especially when the transcript may otherwise end right after preparing the code block.
+[vc-00037] Before declaring failure on a Spotify action task that depends on playlist sufficiency, exhaust the authoritative evaluation path first.
+- If the requirement is time-based, compute actual total runtime for every relevant playlist (including both public and private libraries when coverage is ambiguous) using authoritative song metadata before concluding that no playlist qualifies.
+- Do not mark `supervisor.complete_task(status='fail')` merely because playlist summary/detail objects look sparse or because song counts seem too low.
+- For a successful path, print the chosen playlist with its computed total runtime immediately before `spotify.play_music(...)`; for a failure path, ensure the runtime check was completed across all candidate playlists.
+[vc-00038] For action tasks, inspect the documentation for the actual action endpoint before making the final go/no-go decision.
+- Example: if the task is to start Spotify playback, inspect `spotify.play_music` even if earlier analysis suggests no candidate may qualify.
+- Do not treat candidate evaluation alone as task completion; review the endpoint needed to perform the requested action in the current task context.
+[vc-00039] For action tasks that require choosing among evaluated candidates, do not stop at analysis once a valid candidate exists.
+- After computing and reviewing the final candidate set, execute the requested action with the chosen qualifying target and verify the action response indicates success before calling `supervisor.complete_task()`.
+- Reserve `supervisor.complete_task(status='fail')` for cases where no candidate satisfies the requirement after the authoritative evaluation path has been exhausted.
+[vc-00042] Before marking failure on a Spotify action task whose wording asks for 'a playlist on Spotify,' explicitly verify that you have exhausted both (a) the user's playlist library and (b) the broader searchable playlist space available via `spotify.search_playlists(...)`, unless the instruction clearly restricts you to the library.
+- Do not equate 'no qualifying saved playlist' with 'no qualifying Spotify playlist.'
+- Only call `supervisor.complete_task(status='fail')` after that broader candidate search also fails.
+[vc-00043] For file-system tasks with relative temporal language such as 'last month,' derive the target year-month programmatically from `phone.get_current_date_and_time()` and use that derived value to select the file path from directory listings.
+- Do not visually spot a plausible file and then hard-code the month/path.
+- Carry the parsed current-date value through to the final file-selection logic, especially across month/year boundaries.
+[vc-00045] For equal-split money-request tasks, validate the split arithmetic before creating requests.
+- Compute each participant's share from the authoritative total and participant count (`roommates + user` when the instruction says the bill is shared among roommates and me).
+- If the equal share has more than two decimal places, choose and document a cents-safe rounding policy before mutation so the final charged amounts remain internally consistent.
+- Do not silently rely on Python float output for financial splits.
+[vc-00046] After creating Venmo payment requests, perform an explicit structured success audit before calling `supervisor.complete_task()`.
+- For each `venmo.create_payment_request(...)` result, assert `result['message'] == 'Payment request created.'` and capture the returned `payment_request_id`.
+- Verify the number of successful creations matches the intended non-duplicate recipient set.
+- If some recipients were skipped due to existing pending requests, separately confirm that `created + skipped_for_existing_pending == intended_total`.
+## TROUBLESHOOTING AND PITFALLS:
+
+[ts-00011] If a Python standard library module is blocked in the execution environment (for example, `io`), fall back to simple manual string construction for the required output format instead of retrying the same import-based approach. Verify the generated content with the target file API afterward.
+[ts-00026] When printing intermediate data for verification, use only JSON-serializable structures.
+- This environment's `print` wrapper may JSON-serialize objects before display.
+- Do not print Python-only containers such as `set`; convert them to `list`/`sorted(list(...))` or print simple fields separately.
+- Apply this especially in final pre-mutation verification prints so debugging does not block the task.
+[ts-00047] For money calculations in this environment, do not assume Python's `decimal` module is available.
+- Prefer parsing currency amounts into integer cents immediately and perform all split/rounding logic with integers from the start.
+- Only convert back to a two-decimal-string or numeric amount at the final API boundary.
+- Use this especially for Venmo/Splitwise equal-share tasks to avoid both blocked-import failures and float-precision mistakes.
+## OTHERS
+[misc-00003] Remember that the email addresses, access tokens and variables (e.g. spotify_password) in the example above are not valid anymore.
+[misc-00008] Once you have completed the task, make sure to call apis.supervisor.complete_task(). If the task asked for some information, return it as the answer argument, i.e. call apis.supervisor.complete_task(answer=<answer>). Many tasks do not require an answer, so in those cases, just call apis.supervisor.complete_task() i.e. do not pass any argument.
