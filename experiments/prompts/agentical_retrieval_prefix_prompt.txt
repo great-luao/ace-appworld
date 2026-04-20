@@ -1,0 +1,33 @@
+USER:
+You are a Retrieval Agent for ACE evaluation.
+
+Your job is to read the task context and the full playbook, then select the smallest high-value subset of playbook bullets that should be inserted at the beginning of the generator prompt before the task starts.
+
+Selection rules:
+- Select at most {{ max_skills }} bullet ids.
+- Return only bullet ids that appear verbatim in the provided playbook.
+- Do not rewrite, summarize, or merge playbook bullets.
+- Prefer bullets that are likely to help with the current task's APIs, information sources, verification needs, and common failure modes.
+- Prefer generalizable, decision-relevant bullets over generic filler.
+- If nothing is clearly relevant, return an empty list.
+
+Task information:
+- User: {{ main_user.first_name }} {{ main_user.last_name }}
+- Email: {{ main_user.email }}
+- Phone: {{ main_user.phone_number }}
+- Task: {{ input_str }}
+- Relevant APIs: {{ relevant_apis }}
+
+Available apps:
+{{ app_descriptions }}
+
+Full playbook:
+{{ playbook }}
+
+Return JSON only in the following format:
+```json
+{
+  "reasoning": "brief explanation of why these bullets are the best initial subset",
+  "selected_bullet_ids": ["bullet-id-1", "bullet-id-2"]
+}
+```

@@ -4,7 +4,7 @@
 
 这是一个 Python 3.12 的 AppWorld + ACE 实验仓库：实验由 `experiments/configs/*.jsonnet` 驱动，运行时会动态加载 `experiments/code/*/run.py`，并把每个 task 的执行状态、环境反馈与模型调用日志落盘到 `experiments/outputs/`，其“非标准点”在于 agent loop 与环境执行器（`AppWorld.execute`）是松耦合的可插拔流水线。我们会在这个框架上实现新论文相关的实验代码。
 
-此外，仓库根目录下维护了 `METHODS/` 文件夹，用来持续记录我们论文方法设计的不同板块。它不是代码入口，而是方法学笔记区：后续会把算法目标、模块拆分、prompt 设计、分析框架与实验假设分别整理成多个 `.md` 文件，供协作 agent 快速理解“我们正在构建什么方法”以及“当前设计推进到了哪一步”。
+此外，仓库根目录下维护了 `METHODS/` 文件夹，用来持续记录我们论文方法设计的不同板块。它不是代码入口，而是方法学笔记区。在进行跟科研相关的代码写作前，请先阅读 `METHODS/AGENTS.md`，了解项目结构、代码风格、测试规则和边界条件等关键信息。
 
 ## Environment Setting
 
@@ -28,8 +28,6 @@
 - `data/datasets/`: 数据集 task id 列表（可自定义子集）。
 - `experiments/outputs/`: 每次实验输出（logs、dbs、evaluation 报告）。
 - `METHODS/`: 方法设计文档区；按主题拆分记录论文方法、算法设定、prompt 方案、分析维度与后续待验证假设。
-    - `Methods.md`: 记录我们整个论文的核心方法。
-    - `Classifier.md`: 记录方法中，classifier agent的相关信息。
 
 ## Code Style
 
@@ -50,6 +48,7 @@ execution_outputs = [
 - 有必要的话，可以修改原始库中的核心代码。
 - 新增实验逻辑优先放在 `experiments/code/ace`，尽量不改 `src/appworld` 的通用能力。
 - 代码和功能不是越多越好！尽量维持一个轻量级的代码库，少写各类fallback以及异常处理，发生异常让代码自然报错即可，我们之后再针对报错进行修复和完善。
+- 如果需要的话，可以引入新的库，但需要提醒用户或自行安装。
 
 ## Testing Rules
 

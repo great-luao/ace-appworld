@@ -333,40 +333,74 @@ def extract_json_from_text(text, json_key=None):
         
     return None
 
-def extract_playbook_bullets(playbook_text, bullet_ids):
+def build_playbook_bullet_lookup(playbook_text):
+    """Build a lookup of playbook bullets keyed by bullet id."""
+    lines = playbook_text.strip().split('\n')
+    bullet_lookup = {}
+    current_section = "general"
+    current_section_header = "GENERAL"
+
+    for line in lines:
+        stripped_line = line.strip()
+        if stripped_line.startswith('##'):
+            current_section_header = stripped_line[2:].strip()
+            current_section = (
+                current_section_header.lower()
+                .replace(' ', '_')
+                .replace('&', 'and')
+                .rstrip(':')
+            )
+            continue
+
+        if not stripped_line:
+            continue
+
+        parsed = parse_playbook_line(line)
+        if parsed:
+            bullet_lookup[parsed['id']] = {
+                **parsed,
+                'section': current_section,
+                'section_header': current_section_header,
+            }
+
+    return bullet_lookup
+
+def extract_playbook_bullets(
+    playbook_text,
+    bullet_ids,
+    include_section_headers=False,
+    empty_message="(No bullets used by generator)",
+):
     """
     Extract specific bullet points from playbook based on bullet_ids.
     
     Args:
         playbook_text (str): The full playbook text
         bullet_ids (list): List of bullet IDs to extract
+        include_section_headers (bool): Whether to include section headers in the output
+        empty_message (str): Message returned when no bullet ids are available
     
     Returns:
         str: Formatted playbook content containing only the specified bullets
     """
     if not bullet_ids:
-        return "(No bullets used by generator)"
-    
-    lines = playbook_text.strip().split('\n')
-    found_bullets = []
-    
-    for line in lines:
-        if line.strip():  # Skip empty lines
-            parsed = parse_playbook_line(line)
-            if parsed and parsed['id'] in bullet_ids:
-                found_bullets.append({
-                    'id': parsed['id'],
-                    'content': parsed['content'],
-                    'helpful': parsed['helpful'],
-                    'harmful': parsed['harmful']
-                })
-    
+        return empty_message
+
+    bullet_lookup = build_playbook_bullet_lookup(playbook_text)
+    ordered_ids = list(dict.fromkeys(bullet_ids))
+    found_bullets = [bullet_lookup[bullet_id] for bullet_id in ordered_ids if bullet_id in bullet_lookup]
+
     if not found_bullets:
         return "(Generator referenced bullet IDs but none were found in playbook)"
-    
-    # Format the bullets for reflector input
+
     formatted_bullets = []
+    last_section_header = None
     for bullet in found_bullets:
+        if include_section_headers and bullet['section_header'] != last_section_header:
+            if formatted_bullets:
+                formatted_bullets.append("")
+            formatted_bullets.append(f"## {bullet['section_header']}")
+            last_section_header = bullet['section_header']
         formatted_bullets.append(f"[{bullet['id']}] {bullet['content']}")
-    
+
     return '\n'.join(formatted_bullets)
