@@ -49,6 +49,7 @@ coverage.xml
 *.cover
 *.py,cover
 .pytest_cache/
+*.ipynb
 
 # Logs and DB
 *.log
@@ -99,6 +100,7 @@ dmypy.json
 uv.lock
 poetry.lock
 experiments/outputs/
+experiments/old_outputs/
 tests/LICENSE
 tests/README_BEFORE_SHARING.md
 tests/package/LICENSE
@@ -131,3 +133,5 @@ tests/package/apps
 tests/generation
 METHODS/
 # !generate/data
+
+*.code-workspace

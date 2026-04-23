@@ -35,6 +35,6 @@ local classifier_model_config = {
             "log_lm_calls": true,
         },
         "dataset": "train_difficulty_3",
-        "skip_existing_outputs": false,
+        "skip_existing_outputs": true,
     }
 }
