@@ -1,0 +1,217 @@
+You are a strict interaction-level classifier for AppWorld prediction-observation gap analysis.
+
+Your task is to classify one interaction: how the generator's `predicted observation` differs from the real `actual observation` for the current code execution.
+
+**Instructions:**
+- Use only the predefined taxonomy below.
+- Choose exactly one label for `primary_board`.
+- Choose exactly one named label for `diff_category`, or output `""` if `primary_board` is `other`.
+- Use only the information available up to the current interaction.
+- Do not use future trajectory information.
+- `PREDICTED_OBSERVATION` is the generator's own guess about what the environment would return after running `CURRENT_CODE`.
+- `ACTUAL_OBSERVATION` is the real environment feedback returned by execution.
+- `CURRENT_REASONING_TEXT` is the generator's current reasoning immediately before it produced `CURRENT_CODE`.
+- Return JSON only. No markdown. No prose outside the JSON object.
+- The few-shot examples below are illustrative, not exhaustive.
+- If no existing board clearly fits, use `other`.
+- If `primary_board` is `other`, you must set `diff_category` to an empty string `""`. Do not further subclassify it.
+
+**Rules**
+- Classify `primary_board` by the main purpose of the current step, not by every operation that appears in the code.
+- Use `other` when the step is outside the current classifier focus or does not cleanly fit the named boards.
+- If `primary_board` is `other`, set `diff_category` to `""` and stop there.
+
+**Taxonomy**
+
+**Primary Board**  
+Choose the board that best describes what the current code step is trying to do.
+
+1. `docs_lookup`
+Definition:
+This step is mainly about inspecting interface knowledge: app descriptions, API docs, schemas, available functions, parameter names, or response formats.
+Use when:
+- The code calls `api_docs.show_app_descriptions`, `api_docs.show_api_descriptions`, or `api_docs.show_api_doc`.
+- The code is learning how to call something, not yet using the real business data.
+Examples:
+- Looking up whether Spotify has `show_playlist` or `show_playlist_library`.
+- Checking which parameters a login API requires.
+
+2. `auth`
+Definition:
+This step is mainly about getting access or credentials so later actions become possible.
+Use when:
+- The code retrieves passwords, verification codes, access tokens, or performs login/logout.
+- The main question is whether access was established correctly.
+Examples:
+- Calling `apis.supervisor.show_account_passwords()`.
+- Logging into Spotify and receiving an access token.
+
+3. `read_fetch`
+Definition:
+This step is mainly about retrieving task-relevant data from an app or API.
+Use when:
+- The code reads records, searches entities, paginates through results, or fetches objects for later filtering or aggregation.
+- The main question is whether the returned data content is correct and sufficiently informative.
+Examples:
+- Fetching playlist pages.
+- Reading song metadata before selecting the most-liked song.
+
+4. `local_reasoning`
+Definition:
+This step is mainly local computation over already available in-memory data, without depending on new external information.
+Use when:
+- The code sorts, filters, aggregates, extracts ids, compares values, or computes a result from previously fetched objects.
+- The environment output is often just printed local variables or derived summaries.
+Examples:
+- Building a unique list of `song_ids` from playlists.
+- Taking `max(songs, key=lambda s: s["like_count"])`.
+
+5. `other`
+Definition:
+This step does not cleanly fit any of the boards above, or the available information is too ambiguous to assign a more specific board confidently.
+Use when:
+- The code's main purpose is unclear or mixed in a way that the named boards do not cover well.
+- The code is mainly a final task submission, or another step we do not want to finely subclassify here.
+- You cannot confidently decide between multiple boards after considering the named options.
+Examples:
+- A step whose main purpose is genuinely unclear from the provided context.
+- A create/update/delete/send/complete step that falls outside the current classifier focus.
+
+**Diff Category**  
+Choose the label that best describes the mismatch between `PREDICTED_OBSERVATION` and `ACTUAL_OBSERVATION`.
+
+If `primary_board` is `other`, always output `diff_category = ""`.
+
+1. `match`
+Definition:
+The prediction is materially correct for this interaction.
+Interpretation rules:
+- Minor formatting differences are allowed.
+- The key facts, structure, and operational meaning should agree.
+
+2. `safe_abstraction`
+Definition:
+The prediction is less detailed than reality, but still preserves enough information that the same immediate next code action would likely be chosen.
+Interpretation rules:
+- Use this only when the prediction compresses the response safely enough that an agent with only the predicted observation would still make the same immediate next move.
+- Do not use this if the omitted details would matter for filtering, control flow, action selection, or argument construction in the next step.
+- Be especially conservative for auth steps: if ids, tokens, paths, statuses, or other follow-up fields are omitted, prefer `missing_decisive_information`.
+Examples:
+- Predicting `"success"` when the real output is `"success"` plus extra payload that is clearly irrelevant to the next step.
+- Predicting a shorter schema preview that still preserves the exact decisive fields the agent would immediately use.
+
+3. `schema_or_name_mismatch`
+Definition:
+The prediction gets names or structure wrong.
+Interpretation rules:
+- Use this for wrong field names, API names, parameter names, response keys, nesting shape, or object/list structure.
+- The content may be plausible, but the interface representation is wrong.
+- Do not use this just because the prediction is shorter or partial. If the main problem is omitted decision-relevant content rather than wrong interface representation, prefer `missing_decisive_information` or `value_or_state_mismatch`.
+Examples:
+- Predicting `playlist_id` when the real field is `id`.
+- Predicting a flat object when the real output is a list of objects.
+
+4. `missing_decisive_information`
+Definition:
+The prediction omits information that would be needed for a correct next decision.
+Interpretation rules:
+- Use this when the prediction is too shallow, too partial, or too underspecified.
+- The missing details should be important for the next step, not merely nice to have.
+Examples:
+- Omitting ids needed for follow-up API calls.
+- Omitting timestamps, nested actors, or status fields needed for filtering.
+
+5. `value_or_state_mismatch`
+Definition:
+The structure may be fine, but the substantive content is wrong.
+Interpretation rules:
+- Use this when the wrong records, wrong values, wrong counts, wrong names, or wrong state are predicted.
+- The mismatch is about content, not about schema naming.
+Examples:
+- Predicting the wrong password entry.
+- Predicting the wrong count or the wrong selected song.
+
+6. `wrong_action_or_failure_mode`
+Definition:
+The prediction implies the wrong execution outcome pattern.
+Interpretation rules:
+- Use this when the prediction expects success but the real output is an error, or vice versa.
+- Also use when the predicted side-effect semantics are wrong.
+Examples:
+- Predicting a successful login when the real output is an auth error.
+- Predicting a harmless read-like response for an action that actually fails.
+
+**Input Fields**
+
+`CURRENT_REASONING_TEXT`
+The generator's local reasoning that led to the current code block.
+
+`CURRENT_CODE`
+The exact Python code executed for the current interaction.
+
+`PREDICTED_OBSERVATION`
+The generator's predicted environment feedback for `CURRENT_CODE`.
+
+`ACTUAL_OBSERVATION`
+The real environment feedback returned after executing `CURRENT_CODE`.
+
+**Examples**
+
+**Example 1: Docs lookup**
+Input summary:
+- `CURRENT_CODE` asks for API descriptions for an app.
+- `CURRENT_REASONING_TEXT` says the model wants to inspect available APIs before acting.
+- `PREDICTED_OBSERVATION` invents API names that are not in the real response.
+- `ACTUAL_OBSERVATION` is a list of real callable names and descriptions.
+
+Output:
+{
+  "primary_board": "docs_lookup",
+  "diff_category": "schema_or_name_mismatch",
+  "reason": "This interaction is a docs lookup step because the code is inspecting available APIs. The prediction is not just shorter than reality; it invents or rewrites API identifiers, which makes the interface understanding unreliable for subsequent tool selection. That is a naming/schema issue rather than a content omission alone."
+}
+
+**Example 2: Other**
+Input summary:
+- `CURRENT_CODE` is mainly a state-changing action or final task submission.
+- This type of step is outside the current classifier focus for fine-grained diff subclassification.
+
+Output:
+{
+  "primary_board": "other",
+  "diff_category": "",
+  "reason": "This interaction is mainly a state-changing or finalization step rather than docs lookup, auth, read/fetch, or local reasoning. Under the current taxonomy it should be routed to other without further diff subclassification."
+}
+
+**Response format**
+
+Return JSON only with exactly:
+{
+  "primary_board": "...",
+  "diff_category": "... or \"\" if primary_board is other",
+  "reason": "..."
+}
+
+**Interaction To Classify**
+
+`CURRENT_REASONING_TEXT`
+```
+{{current_reasoning_text}}
+```
+
+`CURRENT_CODE`
+```python
+{{current_code}}
+```
+
+`PREDICTED_OBSERVATION`
+```
+{{predicted_observation}}
+```
+
+`ACTUAL_OBSERVATION`
+```
+{{actual_observation}}
+```
+
+Now classify the interaction above.

@@ -103,7 +103,11 @@ class BaseSimplifiedReActAgent(BaseAgent):
         )
         predicted_output = ""
         prediction_cost = 0.0
-        if self.enable_output_prediction and code.strip():
+        if (
+            self.enable_output_prediction
+            and code.strip()
+            and not self.is_complete_task_action(code)
+        ):
             predicted_output, prediction_cost = self.predict_environment_output()
 
         return [
@@ -138,6 +142,12 @@ class BaseSimplifiedReActAgent(BaseAgent):
             return "", text
         else:
             return output_code, text
+
+    def is_complete_task_action(self, code: str) -> bool:
+        stripped_lines = [line.strip() for line in code.splitlines() if line.strip()]
+        if not stripped_lines:
+            return False
+        return bool(re.match(r"^apis\.supervisor\.complete_task\s*\(", stripped_lines[-1]))
 
     def truncate_input(self, input_str: str) -> str:
         max_prompt_length = self.max_prompt_length

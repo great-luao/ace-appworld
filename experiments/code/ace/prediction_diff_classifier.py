@@ -1,3 +1,4 @@
+import json
 import math
 import os
 import re
@@ -16,11 +17,10 @@ from appworld.common.utils import (
     yield_jsonl,
 )
 from appworld_experiments.code.ace.lite_llm_generator import LiteLLMGenerator
-from appworld_experiments.code.ace.playbook import extract_json_from_text
 from appworld_experiments.code.ace.prediction_diff_reconstruction import (
     PREDICTION_TRIGGER_TEXT,
     build_aligned_interactions,
-    clean_predicted_output,
+    count_effective_predicted_entries,
     extract_code_and_reasoning,
     extract_output_content,
     extract_reconstructed_steps,
@@ -34,7 +34,6 @@ ALLOWED_PRIMARY_BOARDS = {
     "auth",
     "read_fetch",
     "local_reasoning",
-    "write_or_complete",
     "other",
 }
 ALLOWED_DIFF_CATEGORIES = {
@@ -44,7 +43,6 @@ ALLOWED_DIFF_CATEGORIES = {
     "missing_decisive_information",
     "value_or_state_mismatch",
     "wrong_action_or_failure_mode",
-    "other",
 }
 DECISIVE_DIFF_CATEGORIES = {
     "missing_decisive_information",
@@ -52,6 +50,7 @@ DECISIVE_DIFF_CATEGORIES = {
     "wrong_action_or_failure_mode",
 }
 BENIGN_DIFF_CATEGORIES = {"safe_abstraction"}
+CLASSIFIER_RESPONSE_KEYS = {"primary_board", "diff_category", "reason"}
 
 
 class PredictionDiffClassifier(FromDict):
@@ -162,11 +161,11 @@ class PredictionDiffClassifier(FromDict):
             return None
 
         environment_entries = AppWorld.parse_environment_io_log(file_path=environment_log_path)
-        total_interaction_count = len(environment_entries)
         predicted_entries = AppWorld.parse_environment_io_log(file_path=predicted_log_path)
         lm_calls = list(yield_jsonl(lm_calls_path))
         reconstructed_steps = self.extract_reconstructed_steps(lm_calls)
         evaluation_summary = self.parse_evaluation_report(evaluation_report_path)
+        total_interaction_count = count_effective_predicted_entries(predicted_entries)
 
         if self.max_interactions_per_task is not None:
             environment_entries = environment_entries[: self.max_interactions_per_task]
@@ -246,283 +245,67 @@ class PredictionDiffClassifier(FromDict):
             messages=[{"role": "user", "content": prompt}]
         )
         raw_response = model_output.get("content") or ""
-        parsed_response = extract_json_from_text(raw_response) or {}
-
-        normalized = self.normalize_classification_response(
-            parsed_response=parsed_response,
-            interaction=interaction,
-            raw_response=raw_response,
-        )
-        output_record = {
+        parsed_response = self.parse_classifier_response(raw_response)
+        normalized = self.normalize_classification_response(parsed_response=parsed_response)
+        return {
             "interaction_index": interaction["interaction_index"],
             "primary_board": normalized["primary_board"],
             "diff_category": normalized["diff_category"],
-            "reasoning": normalized["reasoning"],
-            "evidence": normalized["evidence"],
-            "model_response_raw": normalized["model_response_raw"],
-            "parse_errors": normalized["parse_errors"],
+            "reason": normalized["reason"],
         }
-        return output_record
 
     def render_classifier_prompt(self, task_id: str, interaction: dict[str, Any]) -> str:
-        prior_trajectory = self.format_prior_trajectory(interaction["history"])
         replacements = {
-            "{{task_id}}": task_id,
-            "{{source_experiment_name}}": self.source_experiment_name,
-            "{{interaction_index}}": str(interaction["interaction_index"]),
-            "{{prior_trajectory}}": prior_trajectory,
             "{{current_reasoning_text}}": self.clip_text(interaction["current_reasoning"]),
             "{{current_code}}": interaction["current_code"],
-            "{{predicted_output}}": self.clip_text(interaction["predicted_output"]),
-            "{{actual_output}}": self.clip_text(interaction["actual_output"]),
+            "{{predicted_observation}}": self.clip_text(interaction["predicted_observation"]),
+            "{{actual_observation}}": self.clip_text(interaction["actual_observation"]),
         }
         prompt = self.classifier_prompt_template
         for key, value in replacements.items():
             prompt = prompt.replace(key, value)
         return prompt
 
-    def format_prior_trajectory(self, history: list[dict[str, Any]]) -> str:
-        if not history:
-            return "(no prior interactions)"
-
-        chunks: list[str] = []
-        for item in history:
-            code = item.get("code") or ""
-            output = self.clip_text(item.get("actual_output") or "")
-            chunk = "\n".join(
-                [
-                    f"[Interaction {item['interaction_index']}]",
-                    "Code:",
-                    "```python",
-                    code,
-                    "```",
-                    "Output:",
-                    "```",
-                    output,
-                    "```",
-                ]
+    def parse_classifier_response(self, raw_response: str) -> dict[str, Any]:
+        try:
+            parsed_response = json.loads((raw_response or "").strip())
+        except json.JSONDecodeError as error:
+            raise ValueError(f"classifier response is not valid JSON: {error}") from error
+        if not isinstance(parsed_response, dict):
+            raise ValueError("classifier response must be a JSON object.")
+        response_keys = set(parsed_response.keys())
+        if response_keys != CLASSIFIER_RESPONSE_KEYS:
+            raise ValueError(
+                "classifier response must contain exactly "
+                f"{sorted(CLASSIFIER_RESPONSE_KEYS)}; got {sorted(response_keys)}"
             )
-            chunks.append(chunk)
-        joined = "\n\n".join(chunks)
-        return self.clip_text(joined, max_chars=self.max_history_chars)
+        return parsed_response
 
     def normalize_classification_response(
         self,
         parsed_response: dict[str, Any],
-        interaction: dict[str, Any],
-        raw_response: str,
     ) -> dict[str, Any]:
         primary_board = str(parsed_response.get("primary_board", "")).strip().lower()
         diff_category = str(parsed_response.get("diff_category", "")).strip().lower()
-        reasoning = str(parsed_response.get("reasoning", "")).strip()
-        evidence = parsed_response.get("evidence") if isinstance(parsed_response.get("evidence"), dict) else {}
-
-        parse_errors: list[str] = []
         if primary_board not in ALLOWED_PRIMARY_BOARDS:
-            parse_errors.append(f"invalid primary_board={primary_board}")
-            primary_board = self.infer_primary_board(interaction["current_code"])
-        if diff_category not in ALLOWED_DIFF_CATEGORIES:
-            parse_errors.append(f"invalid diff_category={diff_category}")
-            diff_category = self.infer_diff_category(interaction)
-        if not reasoning:
-            reasoning = "Classifier returned empty reasoning; fallback reasoning was applied."
-            parse_errors.append("empty reasoning")
-        if not evidence:
-            evidence = {
-                "current_reasoning_summary": self.clip_text(interaction["current_reasoning"], max_chars=400),
-                "key_predicted_claim": self.clip_text(interaction["predicted_output"], max_chars=400),
-                "key_actual_fact": self.clip_text(interaction["actual_output"], max_chars=400),
-            }
-            parse_errors.append("empty or invalid evidence")
+            raise ValueError(f"invalid primary_board={primary_board}")
+        if primary_board == "other":
+            if diff_category != "":
+                raise ValueError(
+                    "diff_category must be empty when primary_board is 'other'; "
+                    f"got diff_category={diff_category}"
+                )
+        elif diff_category not in ALLOWED_DIFF_CATEGORIES:
+            raise ValueError(f"invalid diff_category={diff_category}")
 
-        normalized = {
+        reason = str(parsed_response.get("reason", "")).strip()
+        if not reason:
+            raise ValueError("classifier response must include a non-empty reason.")
+        return {
             "primary_board": primary_board,
             "diff_category": diff_category,
-            "reasoning": reasoning,
-            "evidence": evidence,
-            "model_response_raw": raw_response,
-            "parse_errors": parse_errors,
+            "reason": reason,
         }
-        return normalized
-
-    def infer_primary_board(self, code: str) -> str:
-        lowered = (code or "").lower()
-        if "api_docs.show_api_doc" in lowered or "api_docs.show_api_descriptions" in lowered:
-            return "docs_lookup"
-        if ".login(" in lowered or "show_account_passwords" in lowered:
-            return "auth"
-        if "complete_task(" in lowered:
-            return "write_or_complete"
-        write_markers = [
-            ".create_",
-            ".update_",
-            ".delete_",
-            ".remove_",
-            ".move_",
-            ".send_",
-            ".like_",
-            ".follow_",
-            ".review_",
-            ".approve_",
-            ".deny_",
-        ]
-        if any(marker in lowered for marker in write_markers):
-            return "write_or_complete"
-        read_markers = [".show_", ".search_", ".download_", ".get_"]
-        if any(marker in lowered for marker in read_markers):
-            return "read_fetch"
-        local_reasoning_markers = [
-            "max(",
-            "min(",
-            "sorted(",
-            "len(",
-            "set(",
-            "sum(",
-            "append(",
-            "extend(",
-            "for ",
-            "if ",
-            "print(",
-        ]
-        if any(marker in lowered for marker in local_reasoning_markers):
-            return "local_reasoning"
-        return "other"
-
-    def infer_diff_category(self, interaction: dict[str, Any]) -> str:
-        predicted = (interaction["predicted_output"] or "").strip()
-        actual = (interaction["actual_output"] or "").strip()
-        board = self.infer_primary_board(interaction["current_code"])
-        if self.normalize_text(predicted) == self.normalize_text(actual):
-            return "match"
-        if not predicted:
-            return "missing_decisive_information"
-        if (
-            board != "docs_lookup"
-            and self.looks_like_error(predicted) != self.looks_like_error(actual)
-        ):
-            return "wrong_action_or_failure_mode"
-        if board in {"auth", "write_or_complete"} and self.looks_like_safe_success_abstraction(
-            predicted, actual
-        ):
-            return "safe_abstraction"
-        if self.looks_like_schema_mismatch(predicted, actual):
-            return "schema_or_name_mismatch"
-        if board != "docs_lookup" and self.misses_decisive_information(predicted, actual):
-            return "missing_decisive_information"
-        if "message" in actual.lower() and "message" in predicted.lower():
-            return "safe_abstraction"
-        if self.looks_like_value_or_state_mismatch(predicted, actual):
-            return "value_or_state_mismatch"
-        return "other"
-
-    def looks_like_schema_mismatch(self, predicted: str, actual: str) -> bool:
-        predicted_keys = set(re.findall(r'"([a-zA-Z0-9_]+)"\s*:', predicted))
-        actual_keys = set(re.findall(r'"([a-zA-Z0-9_]+)"\s*:', actual))
-        if not predicted_keys or not actual_keys:
-            return False
-        intersection = predicted_keys & actual_keys
-        union = predicted_keys | actual_keys
-        jaccard = len(intersection) / max(1, len(union))
-        return jaccard < 0.4
-
-    def looks_like_value_or_state_mismatch(self, predicted: str, actual: str) -> bool:
-        predicted_lower = (predicted or "").lower()
-        actual_lower = (actual or "").lower()
-
-        predicted_keys = set(re.findall(r'"([a-zA-Z0-9_]+)"\s*:', predicted))
-        actual_keys = set(re.findall(r'"([a-zA-Z0-9_]+)"\s*:', actual))
-        shared_keys = predicted_keys & actual_keys
-        if shared_keys:
-            return True
-
-        if predicted.startswith("[") and actual.startswith("["):
-            return True
-        if predicted.startswith("{") and actual.startswith("{"):
-            return True
-
-        content_markers = [
-            "access_token",
-            "password",
-            "title",
-            "name",
-            "email",
-            "message",
-            "count",
-            "status",
-            "created_at",
-        ]
-        shared_markers = [
-            marker for marker in content_markers
-            if marker in predicted_lower and marker in actual_lower
-        ]
-        return len(shared_markers) >= 2
-
-    def looks_like_error(self, text: str) -> bool:
-        lowered = (text or "").lower()
-        error_markers = [
-            "traceback",
-            "exception",
-            "error",
-            "failed",
-            "failure",
-            "invalid",
-            "unauthorized",
-            "forbidden",
-            "denied",
-            "not found",
-            "does not exist",
-            "missing required",
-            "already exists",
-        ]
-        return any(marker in lowered for marker in error_markers)
-
-    def looks_like_safe_success_abstraction(self, predicted: str, actual: str) -> bool:
-        predicted_lower = (predicted or "").lower()
-        actual_lower = (actual or "").lower()
-        if self.looks_like_error(predicted) or self.looks_like_error(actual):
-            return False
-        if len(predicted) >= len(actual):
-            return False
-        success_signals = [
-            "execution successful",
-            "access_token",
-            "\"message\"",
-            "marked the active task complete",
-        ]
-        return any(signal in predicted_lower and signal in actual_lower for signal in success_signals)
-
-    def misses_decisive_information(self, predicted: str, actual: str) -> bool:
-        predicted_lower = (predicted or "").lower()
-        actual_lower = (actual or "").lower()
-        decisive_markers = [
-            "access_token",
-            "_id",
-            "\"id\"",
-            "created_at",
-            "updated_at",
-            "\"status\"",
-            "sender",
-            "receiver",
-            "email",
-            "phone_number",
-            "destination_file_path",
-        ]
-        missing_markers = [
-            marker for marker in decisive_markers
-            if marker in actual_lower and marker not in predicted_lower
-        ]
-        if not missing_markers:
-            return False
-        high_signal_markers = {
-            "access_token",
-            "_id",
-            "\"id\"",
-            "\"status\"",
-            "destination_file_path",
-        }
-        if any(marker in high_signal_markers for marker in missing_markers):
-            return True
-        return len(missing_markers) >= 2
 
     def build_task_summary(
         self,
@@ -532,20 +315,23 @@ class PredictionDiffClassifier(FromDict):
         file_suffix: str = "",
     ) -> dict[str, Any]:
         board_counter = Counter(record["primary_board"] for record in interaction_records)
-        diff_counter = Counter(record["diff_category"] for record in interaction_records)
+        category_records = [
+            record for record in interaction_records if record["primary_board"] != "other"
+        ]
+        diff_counter = Counter(record["diff_category"] for record in category_records)
         board_diff_counter = Counter(
-            f"{record['primary_board']}::{record['diff_category']}" for record in interaction_records
+            f"{record['primary_board']}::{record['diff_category']}" for record in category_records
         )
         non_match_count = sum(
-            1 for record in interaction_records if record["diff_category"] != "match"
+            1 for record in category_records if record["diff_category"] != "match"
         )
         decisive_mismatch_count = sum(
             1
-            for record in interaction_records
+            for record in category_records
             if record["diff_category"] in DECISIVE_DIFF_CATEGORIES
         )
         benign_abstraction_count = sum(
-            1 for record in interaction_records if record["diff_category"] in BENIGN_DIFF_CATEGORIES
+            1 for record in category_records if record["diff_category"] in BENIGN_DIFF_CATEGORIES
         )
         interaction_count = len(interaction_records)
         return {
@@ -958,9 +744,6 @@ class PredictionDiffClassifier(FromDict):
 
     def extract_code_and_reasoning(self, text: str) -> tuple[str, str]:
         return extract_code_and_reasoning(text)
-
-    def clean_predicted_output(self, text: str) -> str:
-        return clean_predicted_output(text)
 
     def parse_evaluation_report(self, report_path: str) -> dict[str, Any]:
         if not os.path.exists(report_path):

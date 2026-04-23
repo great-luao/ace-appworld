@@ -18,6 +18,30 @@ def normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").strip()).lower()
 
 
+def is_complete_task_action(code: str) -> bool:
+    stripped_lines = [line.strip() for line in (code or "").splitlines() if line.strip()]
+    if not stripped_lines:
+        return False
+    return bool(re.match(r"^apis\.supervisor\.complete_task\s*\(", stripped_lines[-1]))
+
+
+def filter_predicted_entries_for_classification(
+    predicted_entries: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    filtered_entries = []
+    for predicted_entry in predicted_entries:
+        current_code = predicted_entry.get("input") or ""
+        current_predicted_output = predicted_entry.get("output") or ""
+        if not current_predicted_output.strip() and is_complete_task_action(current_code):
+            continue
+        filtered_entries.append(predicted_entry)
+    return filtered_entries
+
+
+def count_effective_predicted_entries(predicted_entries: list[dict[str, str]]) -> int:
+    return len(filter_predicted_entries_for_classification(predicted_entries))
+
+
 def is_prediction_call(
     lm_call: dict[str, Any],
     prediction_trigger_text: str = PREDICTION_TRIGGER_TEXT,
@@ -176,13 +200,35 @@ def build_aligned_interactions(
 ) -> list[dict[str, Any]]:
     interactions: list[dict[str, Any]] = []
     step_cursor = 0
+    effective_predicted_entries = filter_predicted_entries_for_classification(predicted_entries)
 
-    for index, environment_entry in enumerate(environment_entries):
-        current_code = environment_entry.get("input") or ""
-        current_actual_output = environment_entry.get("output") or ""
-        current_predicted_clipped = (
-            predicted_entries[index]["output"] if index < len(predicted_entries) else ""
+    if len(environment_entries) < len(effective_predicted_entries):
+        raise ValueError(
+            "environment_entries is shorter than predicted_entries after filtering "
+            f"for task={task_id}: env={len(environment_entries)} "
+            f"pred={len(effective_predicted_entries)}"
         )
+
+    trailing_environment_entries = environment_entries[len(effective_predicted_entries) :]
+    if trailing_environment_entries and not all(
+        is_complete_task_action(entry.get("input") or "")
+        for entry in trailing_environment_entries
+    ):
+        raise ValueError(
+            "Found non-complete_task trailing environment interactions after prediction-driven "
+            f"alignment for task={task_id}"
+        )
+
+    for index, predicted_entry in enumerate(effective_predicted_entries):
+        environment_entry = environment_entries[index]
+        current_code = predicted_entry.get("input") or ""
+        current_actual_output = environment_entry.get("output") or ""
+        current_predicted_clipped = predicted_entry.get("output") or ""
+        if normalize_code(environment_entry.get("input") or "") != normalize_code(current_code):
+            raise ValueError(
+                "Predicted/environment code mismatch during prediction-driven alignment for "
+                f"task={task_id}, interaction_index={index + 1}"
+            )
 
         matched_step, step_cursor, alignment = match_step_for_code(
             current_code=current_code,
@@ -203,6 +249,7 @@ def build_aligned_interactions(
                 {
                     "interaction_index": past_index + 1,
                     "code": past_entry.get("input") or "",
+                    "actual_observation": past_entry.get("output") or "",
                     "actual_output": past_entry.get("output") or "",
                 }
             )
@@ -213,6 +260,8 @@ def build_aligned_interactions(
                 "interaction_index": index + 1,
                 "current_reasoning": current_reasoning,
                 "current_code": current_code,
+                "predicted_observation": predicted_output_raw,
+                "actual_observation": current_actual_output,
                 "predicted_output": predicted_output_raw,
                 "actual_output": current_actual_output,
                 "history": history,

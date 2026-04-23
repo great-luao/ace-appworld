@@ -5,6 +5,7 @@ local classifier_model_config = {
     "name": "gpt-5.4",
     "provider": "OpenAI",
     "base_url": "https://api.zwlbnot.cn/v1",
+    "reasoning_effort": "medium",
     "temperature": 0,
     "seed": 100,
     "stop": ["<|endoftext|>", "<|eot_id|>", "<|start_header_id|>"],
@@ -26,14 +27,14 @@ local classifier_model_config = {
         "agent": {
             "type": "prediction_diff_classifier",
             "classifier_model_config": classifier_model_config,
-            "classifier_prompt_file_path": experiment_prompts_path + "/prediction_diff_classifier_prompt.txt",
+            "classifier_prompt_file_path": experiment_prompts_path + "/prediction_diff_classifier_prompt_v2.txt",
             "source_experiment_name": "ReAct_non_ACE_evaluation",
             "max_interactions_per_task": null,
             "max_field_chars": 10000,
             "max_history_chars": 100000,
             "log_lm_calls": true,
         },
-        "dataset": "train_difficulty_2",
+        "dataset": "train_difficulty_3",
         "skip_existing_outputs": false,
     }
 }

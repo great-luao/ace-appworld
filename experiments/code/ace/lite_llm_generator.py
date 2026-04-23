@@ -154,7 +154,7 @@ def non_cached_chat_completion(
         client = Together()
     elif provider.strip().lower() == "openai":
         from openai import OpenAI
-        client = OpenAI(default_headers={"User-Agent": "MyCustomClient/1.0"})
+        client = OpenAI(default_headers={"User-Agent": "MyCustomClient/1.0"}, timeout=120)
         # print("Using OpenAI with custom headers")
     else:
         raise ValueError(

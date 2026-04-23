@@ -33,24 +33,25 @@ PRIMARY_BOARD_LABELS = [
     "auth",
     "read_fetch",
     "local_reasoning",
-    "write_or_complete",
     "other",
 ]
 DIFF_CATEGORY_LABELS = [
-    "no_skill_needed",
+    "match",
     "safe_abstraction",
     "schema_or_name_mismatch",
     "missing_decisive_information",
     "value_or_state_mismatch",
     "wrong_action_or_failure_mode",
 ]
+RETRIEVAL_TAXONOMY_VERSION = "classifier_v2"
+OTHER_BOARD_CATEGORY = ""
 HYBRID_FIELD_WEIGHTS = {
     "predicted_output": 0.35,
     "actual_output": 0.35,
     "current_code": 0.20,
     "surface_diff": 0.10,
 }
-DEFAULT_BACKENDS = ["hybrid_tfidf", "char_ngram_tfidf", "bm25"]
+DEFAULT_BACKENDS = ["hybrid_tfidf", "hybrid_bm25", "char_ngram_tfidf", "bm25"]
 DEFAULT_TOP_K = 5
 DEFAULT_SPLIT_SEED = 100
 
@@ -113,10 +114,7 @@ def normalize_multiline_text(text: str) -> str:
 
 
 def map_diff_category(raw_diff_category: str) -> str:
-    normalized = str(raw_diff_category or "").strip().lower()
-    if normalized in {"match", "other"}:
-        return "no_skill_needed"
-    return normalized
+    return str(raw_diff_category or "").strip().lower()
 
 
 def get_base_task_id(task_id: str) -> str:
@@ -187,6 +185,7 @@ def load_or_reconstruct_datapoints(
         )
         if (
             reconstruction_stats.get("source_experiment_name") == source_experiment_name
+            and reconstruction_stats.get("taxonomy_version") == RETRIEVAL_TAXONOMY_VERSION
             and cached_selected_base_task_ids == requested_selected_base_task_ids
         ):
             datapoints = list(yield_jsonl(datapoints_path))
@@ -208,6 +207,7 @@ def load_or_reconstruct_datapoints(
     stats: dict[str, Any] = {
         "generated_at_utc": current_utc_timestamp(),
         "source_experiment_name": source_experiment_name,
+        "taxonomy_version": RETRIEVAL_TAXONOMY_VERSION,
         "task_count": len(task_ids),
         "task_count_with_labels": 0,
         "task_count_with_classifier_inputs": 0,
@@ -291,6 +291,8 @@ def load_or_reconstruct_datapoints(
                 datapoint["predicted_output"],
                 datapoint["actual_output"],
             )
+            if datapoint["primary_board"] == "other":
+                datapoint["diff_category"] = OTHER_BOARD_CATEGORY
 
             missing_fields = [
                 field
@@ -299,10 +301,11 @@ def load_or_reconstruct_datapoints(
                     "predicted_output",
                     "actual_output",
                     "primary_board",
-                    "diff_category",
                 ]
                 if not datapoint[field]
             ]
+            if datapoint["primary_board"] != "other" and not datapoint["diff_category"]:
+                missing_fields.append("diff_category")
             if missing_fields:
                 stats["dropped_datapoint_count"] += 1
                 for field in missing_fields:
@@ -338,7 +341,9 @@ def load_or_reconstruct_datapoints(
     stats["dropped_missing_field_counts"] = dict(dropped_field_counter)
     stats["dropped_examples"] = dropped_examples
     stats["primary_board_distribution"] = dict(Counter(item["primary_board"] for item in datapoints))
-    stats["diff_category_distribution"] = dict(Counter(item["diff_category"] for item in datapoints))
+    stats["diff_category_distribution"] = dict(
+        Counter(item["diff_category"] for item in datapoints if item["primary_board"] != "other")
+    )
 
     os.makedirs(output_dir, exist_ok=True)
     write_jsonl(datapoints, datapoints_path, silent=True)
@@ -358,6 +363,7 @@ def build_split_manifest(
         if (
             existing_manifest.get("split_seed") == split_seed
             and existing_manifest.get("val_ratio") == val_ratio
+            and existing_manifest.get("taxonomy_version") == RETRIEVAL_TAXONOMY_VERSION
         ):
             return existing_manifest
 
@@ -379,6 +385,7 @@ def build_split_manifest(
 
     manifest = {
         "generated_at_utc": current_utc_timestamp(),
+        "taxonomy_version": RETRIEVAL_TAXONOMY_VERSION,
         "split_seed": split_seed,
         "val_ratio": val_ratio,
         "base_task_id_count": len(base_task_ids),
@@ -392,14 +399,14 @@ def build_split_manifest(
 
 
 def build_split_stats(datapoints: list[dict[str, Any]]) -> dict[str, Any]:
-    diff_counter = Counter(item["diff_category"] for item in datapoints)
-    no_skill_count = diff_counter.get("no_skill_needed", 0)
+    diff_counter = Counter(item["diff_category"] for item in datapoints if item["primary_board"] != "other")
+    other_board_count = sum(item["primary_board"] == "other" for item in datapoints)
     return {
         "base_task_id_count": len({item["base_task_id"] for item in datapoints}),
         "interaction_count": len(datapoints),
         "primary_board_distribution": dict(Counter(item["primary_board"] for item in datapoints)),
         "diff_category_distribution": dict(diff_counter),
-        "no_skill_needed_ratio": (no_skill_count / len(datapoints)) if datapoints else None,
+        "other_board_ratio": (other_board_count / len(datapoints)) if datapoints else None,
     }
 
 
@@ -704,6 +711,7 @@ def compute_category_metrics(
     output_dir: str,
     backend_name: str,
     bank_name: str,
+    gold_board_labels: list[str],
     y_true: list[str],
     y_pred_end_to_end: list[str],
     y_pred_gold_board: list[str],
@@ -730,32 +738,33 @@ def compute_category_metrics(
         y_pred=y_pred_gold_board,
     )
 
-    no_skill_precision, no_skill_recall, no_skill_f1, no_skill_support = precision_recall_fscore_support(
+    match_precision, match_recall, match_f1, match_support = precision_recall_fscore_support(
         y_true,
         y_pred_end_to_end,
-        labels=["no_skill_needed"],
+        labels=["match"],
         zero_division=0,
     )
-    action_required_count = sum(label != "no_skill_needed" for label in y_true)
-    no_skill_count = sum(label == "no_skill_needed" for label in y_true)
+    non_match_count = sum(label != "match" for label in y_true)
+    match_count = sum(label == "match" for label in y_true)
 
-    action_required_predicted_no_skill = sum(
-        gold != "no_skill_needed" and pred == "no_skill_needed"
+    non_match_predicted_as_match = sum(
+        gold != "match" and pred == "match"
         for gold, pred in zip(y_true, y_pred_end_to_end)
     )
-    no_skill_predicted_action_required = sum(
-        gold == "no_skill_needed" and pred != "no_skill_needed"
+    match_predicted_as_non_match = sum(
+        gold == "match" and pred != "match"
         for gold, pred in zip(y_true, y_pred_end_to_end)
     )
+    other_board_count = sum(board == "other" for board in gold_board_labels)
 
     return {
         "end_to_end": end_to_end_metrics,
         "gold_board": gold_board_metrics,
-        "no_skill_needed": {
-            "precision": float(no_skill_precision[0]),
-            "recall": float(no_skill_recall[0]),
-            "f1": float(no_skill_f1[0]),
-            "support": int(no_skill_support[0]),
+        "match": {
+            "precision": float(match_precision[0]),
+            "recall": float(match_recall[0]),
+            "f1": float(match_f1[0]),
+            "support": int(match_support[0]),
         },
         "board_conditioned_effect": {
             "category_accuracy_when_board_correct": safe_accuracy(
@@ -764,12 +773,13 @@ def compute_category_metrics(
                 mask=None,
             ),
         },
-        "action_required_predicted_as_no_skill_needed_rate": (
-            action_required_predicted_no_skill / action_required_count if action_required_count else None
+        "non_match_predicted_as_match_rate": (
+            non_match_predicted_as_match / non_match_count if non_match_count else None
         ),
-        "no_skill_needed_predicted_as_action_required_rate": (
-            no_skill_predicted_action_required / no_skill_count if no_skill_count else None
+        "match_predicted_as_non_match_rate": (
+            match_predicted_as_non_match / match_count if match_count else None
         ),
+        "other_board_count_excluded_from_category_metrics": other_board_count,
     }
 
 
@@ -790,7 +800,8 @@ def build_train_index_maps(train_datapoints: list[dict[str, Any]]) -> tuple[dict
     )
     for index, item in enumerate(train_datapoints):
         board_to_indices[item["primary_board"]].append(index)
-        board_to_diff_to_indices[item["primary_board"]][item["diff_category"]].append(index)
+        if item["primary_board"] != "other" and item["diff_category"]:
+            board_to_diff_to_indices[item["primary_board"]][item["diff_category"]].append(index)
     return dict(board_to_indices), {
         board: dict(diff_to_indices) for board, diff_to_indices in board_to_diff_to_indices.items()
     }
@@ -825,33 +836,41 @@ def run_hierarchical_evaluation(
         )
         predicted_board = pick_best_label(board_score_map)
 
-        predicted_board_indices = [
-            index
-            for indices in category_bank_indices[predicted_board].values()
-            for index in indices
-        ]
-        predicted_category_score_map = aggregate_class_scores(
-            scores=scores,
-            candidate_indices=predicted_board_indices,
-            train_datapoints=train_datapoints,
-            label_key="diff_category",
-            top_k=top_k,
-        )
-        predicted_diff_category = pick_best_label(predicted_category_score_map)
+        if predicted_board == "other":
+            predicted_category_score_map = {}
+            predicted_diff_category = OTHER_BOARD_CATEGORY
+        else:
+            predicted_board_indices = [
+                index
+                for indices in category_bank_indices.get(predicted_board, {}).values()
+                for index in indices
+            ]
+            predicted_category_score_map = aggregate_class_scores(
+                scores=scores,
+                candidate_indices=predicted_board_indices,
+                train_datapoints=train_datapoints,
+                label_key="diff_category",
+                top_k=top_k,
+            )
+            predicted_diff_category = pick_best_label(predicted_category_score_map)
 
-        gold_board_indices = [
-            index
-            for indices in category_bank_indices[datapoint["primary_board"]].values()
-            for index in indices
-        ]
-        gold_board_score_map = aggregate_class_scores(
-            scores=scores,
-            candidate_indices=gold_board_indices,
-            train_datapoints=train_datapoints,
-            label_key="diff_category",
-            top_k=top_k,
-        )
-        gold_board_diff_category = pick_best_label(gold_board_score_map)
+        if datapoint["primary_board"] == "other":
+            gold_board_score_map = {}
+            gold_board_diff_category = OTHER_BOARD_CATEGORY
+        else:
+            gold_board_indices = [
+                index
+                for indices in category_bank_indices.get(datapoint["primary_board"], {}).values()
+                for index in indices
+            ]
+            gold_board_score_map = aggregate_class_scores(
+                scores=scores,
+                candidate_indices=gold_board_indices,
+                train_datapoints=train_datapoints,
+                label_key="diff_category",
+                top_k=top_k,
+            )
+            gold_board_diff_category = pick_best_label(gold_board_score_map)
 
         predictions.append(
             {
@@ -876,9 +895,10 @@ def run_hierarchical_evaluation(
 
     y_true_board = [item["gold_board"] for item in predictions]
     y_pred_board = [item["predicted_board"] for item in predictions]
-    y_true_diff = [item["gold_diff_category"] for item in predictions]
-    y_pred_end_to_end = [item["predicted_diff_category_end_to_end"] for item in predictions]
-    y_pred_gold_board = [item["predicted_diff_category_gold_board"] for item in predictions]
+    category_predictions = [item for item in predictions if item["gold_board"] != "other"]
+    y_true_diff = [item["gold_diff_category"] for item in category_predictions]
+    y_pred_end_to_end = [item["predicted_diff_category_end_to_end"] for item in category_predictions]
+    y_pred_gold_board = [item["predicted_diff_category_gold_board"] for item in category_predictions]
 
     board_metrics = compute_board_metrics(
         output_dir=output_dir,
@@ -892,39 +912,46 @@ def run_hierarchical_evaluation(
         output_dir=output_dir,
         backend_name=backend_name,
         bank_name=bank_name,
+        gold_board_labels=[item["gold_board"] for item in predictions],
         y_true=y_true_diff,
         y_pred_end_to_end=y_pred_end_to_end,
         y_pred_gold_board=y_pred_gold_board,
     )
-    board_correct_mask = [gold == pred for gold, pred in zip(y_true_board, y_pred_board)]
+    category_board_correct_mask = [
+        item["gold_board"] == item["predicted_board"] for item in category_predictions
+    ]
     category_metrics["board_conditioned_effect"] = {
         "category_accuracy_when_board_correct": safe_accuracy(
-            y_true_diff, y_pred_end_to_end, board_correct_mask
+            y_true_diff,
+            y_pred_end_to_end,
+            category_board_correct_mask,
         ),
         "category_accuracy_when_board_wrong": safe_accuracy(
-            y_true_diff, y_pred_end_to_end, [not keep for keep in board_correct_mask]
+            y_true_diff,
+            y_pred_end_to_end,
+            [not keep for keep in category_board_correct_mask],
         ),
     }
 
     return {
         "generated_at_utc": current_utc_timestamp(),
+        "taxonomy_version": RETRIEVAL_TAXONOMY_VERSION,
         "backend": backend_name,
         "bank_name": bank_name,
         "top_k": top_k,
         "train_size": len(train_datapoints),
         "validation_size": len(validation_datapoints),
+        "category_evaluated_size": len(category_predictions),
         "board_metrics": board_metrics,
         "category_metrics": category_metrics,
         "predictions_path": predictions_path,
-        "example_action_required_to_no_skill_needed_errors": collect_prediction_examples(
+        "example_non_other_to_other_board_errors": collect_prediction_examples(
             predictions,
-            predicate=lambda item: item["gold_diff_category"] != "no_skill_needed"
-            and item["predicted_diff_category_end_to_end"] == "no_skill_needed",
+            predicate=lambda item: item["gold_board"] != "other" and item["predicted_board"] == "other",
         ),
-        "example_no_skill_needed_to_action_required_errors": collect_prediction_examples(
+        "example_other_to_non_other_board_errors": collect_prediction_examples(
             predictions,
-            predicate=lambda item: item["gold_diff_category"] == "no_skill_needed"
-            and item["predicted_diff_category_end_to_end"] != "no_skill_needed",
+            predicate=lambda item: item["gold_board"] == "other" and item["predicted_board"] != "other",
         ),
     }
 
@@ -1091,6 +1118,8 @@ def write_bank_stats(
 def build_board_conditioned_diff_distribution(datapoints: list[dict[str, Any]]) -> dict[str, dict[str, int]]:
     board_to_diff_counter: defaultdict[str, Counter] = defaultdict(Counter)
     for item in datapoints:
+        if item["primary_board"] == "other" or not item["diff_category"]:
+            continue
         board_to_diff_counter[item["primary_board"]][item["diff_category"]] += 1
     return {board: dict(counter) for board, counter in board_to_diff_counter.items()}
 
@@ -1143,6 +1172,7 @@ def run_prototype_bank(
         )
         prototype_stats["backend"] = backend_name
         prototype_stats["prototype_k_max"] = prototype_k_max
+        prototype_stats["taxonomy_version"] = RETRIEVAL_TAXONOMY_VERSION
         prototype_stats_path = os.path.join(output_dir, f"prototype_stats_{backend_name}.json")
         write_json(prototype_stats, prototype_stats_path, silent=True)
 
@@ -1172,7 +1202,10 @@ def collect_existing_results(output_dir: str, prefix: str) -> dict[str, dict[str
             continue
         backend_name = file_name[len(prefix_with_underscore) : -len(".json")]
         path = os.path.join(output_dir, file_name)
-        results[backend_name] = load_json(path)
+        result = load_json(path)
+        if result.get("taxonomy_version") != RETRIEVAL_TAXONOMY_VERSION:
+            continue
+        results[backend_name] = result
     return results
 
 
@@ -1392,11 +1425,7 @@ def main() -> None:
             prototype_k_max=args.prototype_k_max,
         )
 
-    write_error_analysis(
-        output_dir=output_dir,
-        reconstruction_stats=reconstruction_stats,
-        split_manifest=split_manifest,
-    )
+    # The old markdown summary is tied to the v1 taxonomy and will be rewritten separately.
 
     print(
         f"[text_similarity_retrieval] stage={args.stage} output_dir={output_dir} "
