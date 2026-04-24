@@ -1,31 +1,32 @@
+import json
 import os
-import re
 from typing import Any
 
 from appworld import AppWorld
 from appworld.common.path_store import path_store
-from appworld.common.utils import FromDict, read_file, write_json, yield_jsonl
+from appworld.common.utils import FromDict, read_file, read_json, write_json, yield_jsonl
 from appworld.task import Task
 from appworld_experiments.code.ace.lite_llm_generator import LiteLLMGenerator
-from appworld_experiments.code.ace.playbook import (
-    apply_curator_operations,
-    extract_json_from_text,
-    get_next_global_id,
-    get_playbook_stats,
+from appworld_experiments.code.ace.playbook import extract_json_from_text
+from appworld_experiments.code.ace.prediction_diff_reconstruction import (
+    PREDICTION_TRIGGER_TEXT,
+    build_aligned_interactions,
+    extract_reconstructed_steps,
+)
+from appworld_experiments.code.ace.skillbank import (
+    DIFF_CATEGORIES,
+    PRIMARY_BOARDS,
+    apply_skill_operations,
+    build_empty_skillbank,
+    count_skills,
+    ensure_skillbank_shape,
+    get_bucket,
 )
 
 
-PREDICTION_TRIGGER_TEXT = "Before writing your next code block, predict what the environment would return"
-ALLOWED_SECTIONS = {
-    "strategies_and_hard_rules",
-    "apis_to_use_for_specific_information",
-    "useful_code_snippets_and_templates",
-    "common_mistakes_and_correct_strategies",
-    "problem_solving_heuristics_and_workflows",
-    "verification_checklist",
-    "troubleshooting_and_pitfalls",
-    "others",
-}
+POST_SKILL_PRIMARY_BOARDS = {"auth", "local_reasoning"}
+UNSUPPORTED_PRIMARY_BOARDS = {"other"}
+SKIPPED_DIFF_CATEGORIES = {"", "match"}
 
 
 class PredictionDiffCurator(FromDict):
@@ -33,12 +34,11 @@ class PredictionDiffCurator(FromDict):
         self,
         curator_model_config: dict,
         curator_prompt_file_path: str,
-        initial_playbook_file_path: str,
-        trained_playbook_file_path: str,
+        initial_skillbank_file_path: str,
+        trained_skillbank_file_path: str,
         source_experiment_name: str,
         classification_file_name: str = "prediction_diff_classification.jsonl",
         max_field_chars: int = 10000,
-        max_classification_chars: int = 50000,
         max_history_chars: int = 100000,
         log_lm_calls: bool = True,
         prediction_trigger_text: str = PREDICTION_TRIGGER_TEXT,
@@ -47,17 +47,15 @@ class PredictionDiffCurator(FromDict):
         self.curator_model: LiteLLMGenerator | None = None
         self.curator_prompt_file_path = curator_prompt_file_path
         self.curator_prompt_template = read_file(curator_prompt_file_path.replace("/", os.sep))
-        self.initial_playbook_file_path = initial_playbook_file_path
-        self.trained_playbook_file_path = trained_playbook_file_path
+        self.initial_skillbank_file_path = initial_skillbank_file_path
+        self.trained_skillbank_file_path = trained_skillbank_file_path
         self.source_experiment_name = source_experiment_name
         self.classification_file_name = classification_file_name
         self.max_field_chars = max_field_chars
-        self.max_classification_chars = max_classification_chars
         self.max_history_chars = max_history_chars
         self.log_lm_calls = log_lm_calls
         self.prediction_trigger_text = prediction_trigger_text
-        self.playbook = ""
-        self.next_global_id = 1
+        self.skillbank = build_empty_skillbank()
         self.current_task_index = 0
 
     def _get_curator_model(self) -> LiteLLMGenerator:
@@ -75,41 +73,44 @@ class PredictionDiffCurator(FromDict):
         if num_processes != 1 or (process_index or 0) != 0:
             raise ValueError(
                 "prediction-diff-curation must run in a single sequential process because "
-                "it updates one shared playbook across tasks."
+                "skillbank updates are sequential across tasks."
             )
 
-        self.initialize_playbook()
+        self.initialize_skillbank()
         print(
             f"[prediction_diff_curation] source_experiment={self.source_experiment_name} "
-            f"tasks={len(task_ids)} playbook={self.trained_playbook_file_path}"
+            f"tasks={len(task_ids)} skillbank={self.trained_skillbank_file_path}"
         )
         for task_index, task_id in enumerate(task_ids):
             self.current_task_index = task_index
             self.curate_task(task_id)
             if (self.current_task_index + 1) % 30 == 0:
-                self.save_playbook_snapshot()
+                self.save_skillbank_snapshot()
 
-    def initialize_playbook(self) -> None:
-        if os.path.exists(self.initial_playbook_file_path):
-            self.playbook = read_file(self.initial_playbook_file_path.replace("/", os.sep))
+    def initialize_skillbank(self) -> None:
+        if os.path.exists(self.initial_skillbank_file_path):
+            self.skillbank = ensure_skillbank_shape(read_json(self.initial_skillbank_file_path))
         else:
-            self.playbook = "(empty)"
-        self.next_global_id = get_next_global_id(self.playbook)
-        self.persist_playbook()
+            self.skillbank = build_empty_skillbank()
+        self.persist_skillbank()
 
     def curate_task(self, task_id: str) -> dict[str, Any] | None:
         source_logs_dir = self._source_logs_dir(task_id)
         environment_log_path = os.path.join(source_logs_dir, "environment_io.md")
+        predicted_log_path = os.path.join(source_logs_dir, "predicted_environment_io.md")
         lm_calls_path = os.path.join(source_logs_dir, "lm_calls.jsonl")
         classification_path = os.path.join(source_logs_dir, self.classification_file_name)
 
-        required_paths = [environment_log_path, lm_calls_path, classification_path]
+        required_paths = [environment_log_path, predicted_log_path, lm_calls_path, classification_path]
         missing_paths = [path for path in required_paths if not os.path.exists(path)]
         if missing_paths:
             print(f"[prediction_diff_curation] skip task={task_id}, missing files: {missing_paths}")
             return None
 
-        classification_records = list(yield_jsonl(classification_path))
+        classification_records = sorted(
+            list(yield_jsonl(classification_path)),
+            key=lambda item: int(item.get("interaction_index") or 0),
+        )
         if not classification_records:
             print(
                 f"[prediction_diff_curation] skip task={task_id}, empty classification file: "
@@ -118,82 +119,195 @@ class PredictionDiffCurator(FromDict):
             return None
 
         environment_entries = AppWorld.parse_environment_io_log(file_path=environment_log_path)
+        predicted_entries = AppWorld.parse_environment_io_log(file_path=predicted_log_path)
         lm_calls = list(yield_jsonl(lm_calls_path))
-        reconstructed_steps = self.extract_reconstructed_steps(lm_calls)
-        interactions = self.build_reconstructed_interactions(
+        reconstructed_steps = extract_reconstructed_steps(
+            lm_calls,
+            prediction_trigger_text=self.prediction_trigger_text,
+        )
+        interactions = build_aligned_interactions(
+            task_id=task_id,
             environment_entries=environment_entries,
+            predicted_entries=predicted_entries,
             reconstructed_steps=reconstructed_steps,
         )
+        interaction_lookup = {
+            int(interaction["interaction_index"]): interaction for interaction in interactions
+        }
+        classification_lookup = {
+            int(record["interaction_index"]): record for record in classification_records
+        }
 
         task = Task.load(task_id=task_id)
-        question_context = getattr(task, "instruction", "")
-        classification_results = self.format_classification_results(classification_records)
-        conversation_history = self.format_full_conversation_history(interactions)
-        prompt = self.render_curator_prompt(
-            question_context=question_context,
-            classification_results=classification_results,
-            conversation_history=conversation_history,
-        )
-
+        task_context = getattr(task, "instruction", "")
         task_output_logs_dir = self._target_task_logs_dir(task_id)
         os.makedirs(task_output_logs_dir, exist_ok=True)
         if self.log_lm_calls:
             curator_lm_calls_path = os.path.join(task_output_logs_dir, "curator_lm_calls.jsonl")
             self._get_curator_model().log_calls_to(file_path=curator_lm_calls_path)
 
-        playbook_stats_before = get_playbook_stats(self.playbook)
-        model_output = self._get_curator_model().generate(
-            messages=[{"role": "user", "content": prompt}]
-        )
-        raw_response = model_output.get("content") or ""
-        normalized = self.normalize_curator_response(raw_response)
+        skill_count_before = count_skills(self.skillbank)
+        interaction_outputs: list[dict[str, Any]] = []
 
-        operations = normalized["operations"]
-        if operations:
-            self.playbook, self.next_global_id = apply_curator_operations(
-                self.playbook,
-                operations,
-                self.next_global_id,
+        for classification_record in classification_records:
+            interaction_index = int(classification_record.get("interaction_index") or 0)
+            primary_board = str(classification_record.get("primary_board") or "").strip()
+            diff_category = str(classification_record.get("diff_category") or "").strip()
+
+            if primary_board not in PRIMARY_BOARDS:
+                skip_reason = (
+                    "non_curatable_primary_board"
+                    if primary_board in UNSUPPORTED_PRIMARY_BOARDS
+                    else "unsupported_primary_board"
+                )
+                interaction_outputs.append(
+                    {
+                        "interaction_index": interaction_index,
+                        "primary_board": primary_board,
+                        "diff_category": diff_category,
+                        "skipped": True,
+                        "skip_reason": skip_reason,
+                    }
+                )
+                continue
+            if diff_category in SKIPPED_DIFF_CATEGORIES:
+                interaction_outputs.append(
+                    {
+                        "interaction_index": interaction_index,
+                        "primary_board": primary_board,
+                        "diff_category": diff_category,
+                        "skipped": True,
+                        "skip_reason": "skipped_diff_category",
+                    }
+                )
+                continue
+            if diff_category not in DIFF_CATEGORIES:
+                interaction_outputs.append(
+                    {
+                        "interaction_index": interaction_index,
+                        "primary_board": primary_board,
+                        "diff_category": diff_category,
+                        "skipped": True,
+                        "skip_reason": "unsupported_diff_category",
+                    }
+                )
+                continue
+
+            current_interaction = interaction_lookup.get(interaction_index)
+            if current_interaction is None:
+                interaction_outputs.append(
+                    {
+                        "interaction_index": interaction_index,
+                        "primary_board": primary_board,
+                        "diff_category": diff_category,
+                        "skipped": True,
+                        "skip_reason": "missing_reconstructed_interaction",
+                    }
+                )
+                continue
+
+            next_interaction = None
+            next_classification = None
+            if primary_board in POST_SKILL_PRIMARY_BOARDS:
+                next_interaction = interaction_lookup.get(interaction_index + 1)
+                next_classification = classification_lookup.get(interaction_index + 1)
+
+            current_bucket = get_bucket(self.skillbank, primary_board, diff_category)
+            prompt = self.render_curator_prompt(
+                task_context=task_context,
+                previous_trajectory=self.format_previous_trajectory(current_interaction.get("history", [])),
+                current_interaction=self.format_current_interaction(current_interaction),
+                current_classification=self.format_current_classification(classification_record),
+                current_skill_bucket=self.format_current_skill_bucket(
+                    primary_board,
+                    diff_category,
+                    current_bucket,
+                ),
+                next_interaction=self.format_next_interaction(
+                    next_interaction,
+                    next_classification,
+                ),
             )
-        self.persist_playbook()
-        playbook_stats_after = get_playbook_stats(self.playbook)
 
+            model_output = self._get_curator_model().generate(
+                messages=[{"role": "user", "content": prompt}]
+            )
+            raw_response = model_output.get("content") or ""
+            normalized = self.normalize_curator_response(
+                raw_response=raw_response,
+                current_bucket=current_bucket,
+            )
+            applied_operations = apply_skill_operations(
+                self.skillbank,
+                normalized["operations"],
+                primary_board=primary_board,
+                diff_category=diff_category,
+                task_id=task_id,
+            )
+
+            interaction_outputs.append(
+                {
+                    "interaction_index": interaction_index,
+                    "primary_board": primary_board,
+                    "diff_category": diff_category,
+                    "reasoning": normalized["reasoning"],
+                    "operations": normalized["operations"],
+                    "applied_operations": applied_operations,
+                    "applied_operation_count": len(applied_operations),
+                    "parse_errors": normalized["parse_errors"],
+                    "model_response_raw": raw_response,
+                    "bucket_skill_count_after": len(
+                        get_bucket(self.skillbank, primary_board, diff_category)
+                    ),
+                }
+            )
+
+        self.persist_skillbank()
+        skill_count_after = count_skills(self.skillbank)
         output_record = {
             "task_id": task_id,
             "source_experiment_name": self.source_experiment_name,
-            "classification_record_count": len(classification_records),
             "interaction_count": len(interactions),
-            "reasoning": normalized["reasoning"],
-            "operations": operations,
-            "applied_operation_count": len(operations),
-            "model_response_raw": raw_response,
-            "parse_errors": normalized["parse_errors"],
-            "playbook_total_bullets_before": playbook_stats_before.get("total_bullets"),
-            "playbook_total_bullets_after": playbook_stats_after.get("total_bullets"),
-            "trained_playbook_file_path": self.trained_playbook_file_path,
+            "classified_interaction_count": len(classification_records),
+            "curated_interaction_count": sum(
+                1 for item in interaction_outputs if not item.get("skipped")
+            ),
+            "skill_count_before": skill_count_before,
+            "skill_count_after": skill_count_after,
+            "trained_skillbank_file_path": self.trained_skillbank_file_path,
+            "interaction_outputs": interaction_outputs,
         }
         output_path = os.path.join(task_output_logs_dir, "prediction_diff_curation.json")
         write_json(output_record, output_path, silent=True)
         print(
-            f"[prediction_diff_curation] task={task_id} operations={len(operations)} "
-            f"output={output_path}"
+            f"[prediction_diff_curation] task={task_id} "
+            f"skill_count={skill_count_after} output={output_path}"
         )
         return output_record
 
     def render_curator_prompt(
         self,
-        question_context: str,
-        classification_results: str,
-        conversation_history: str,
+        task_context: str,
+        previous_trajectory: str,
+        current_interaction: str,
+        current_classification: str,
+        current_skill_bucket: str,
+        next_interaction: str,
     ) -> str:
-        prompt = self.curator_prompt_template.format(
-            question_context=question_context,
-            current_playbook=self.playbook,
-            guidebook=classification_results,
+        return self.curator_prompt_template.format(
+            task_context=task_context,
+            previous_trajectory=previous_trajectory,
+            current_interaction=current_interaction,
+            current_classification=current_classification,
+            current_skill_bucket=current_skill_bucket,
+            next_interaction=next_interaction,
         )
-        return prompt + "\n\n=== FULL CONVERSATION HISTORY ===\n" + conversation_history
 
-    def normalize_curator_response(self, raw_response: str) -> dict[str, Any]:
+    def normalize_curator_response(
+        self,
+        raw_response: str,
+        current_bucket: list[dict[str, Any]],
+    ) -> dict[str, Any]:
         parsed_response = extract_json_from_text(raw_response, "operations") or {}
         parse_errors: list[str] = []
 
@@ -209,34 +323,71 @@ class PredictionDiffCurator(FromDict):
             parse_errors.append("operations is not a list")
             raw_operations = []
 
-        normalized_operations: list[dict[str, str]] = []
+        current_bucket_ids = {
+            str(skill.get("skill_id") or "").strip()
+            for skill in current_bucket
+            if isinstance(skill, dict)
+        }
+        normalized_operations: list[dict[str, Any]] = []
         for index, operation in enumerate(raw_operations):
             if not isinstance(operation, dict):
                 parse_errors.append(f"operation {index} is not an object")
                 continue
-            operation_type = str(operation.get("type", "")).strip()
-            section = str(operation.get("section", "")).strip()
-            content = str(operation.get("content", "")).strip()
-            if operation_type != "ADD":
-                parse_errors.append(f"operation {index} has unsupported type={operation_type}")
-                continue
-            normalized_section = self.normalize_section(section)
-            if normalized_section not in ALLOWED_SECTIONS:
-                parse_errors.append(
-                    f"operation {index} has invalid section={section} "
-                    f"(normalized={normalized_section})"
+
+            operation_type = str(operation.get("type", "")).strip().upper()
+            if operation_type == "ADD":
+                skill = operation.get("skill")
+                if not isinstance(skill, dict):
+                    parse_errors.append(f"operation {index} missing skill object")
+                    continue
+                content = str(skill.get("content", "")).strip()
+                note = str(skill.get("note", "")).strip()
+                if not content:
+                    parse_errors.append(f"operation {index} has empty skill.content")
+                    continue
+                normalized_operations.append(
+                    {
+                        "type": "ADD",
+                        "skill": {
+                            "content": content,
+                            "note": note,
+                        },
+                    }
                 )
                 continue
-            if not content:
-                parse_errors.append(f"operation {index} has empty content")
+
+            if operation_type == "MODIFY":
+                target_skill_id = str(operation.get("target_skill_id", "")).strip()
+                updated_skill = operation.get("updated_skill")
+                if not target_skill_id:
+                    parse_errors.append(f"operation {index} missing target_skill_id")
+                    continue
+                if target_skill_id not in current_bucket_ids:
+                    parse_errors.append(
+                        f"operation {index} references unknown target_skill_id={target_skill_id}"
+                    )
+                    continue
+                if not isinstance(updated_skill, dict):
+                    parse_errors.append(f"operation {index} missing updated_skill object")
+                    continue
+                content = str(updated_skill.get("content", "")).strip()
+                note = str(updated_skill.get("note", "")).strip()
+                if not content:
+                    parse_errors.append(f"operation {index} has empty updated_skill.content")
+                    continue
+                normalized_operations.append(
+                    {
+                        "type": "MODIFY",
+                        "target_skill_id": target_skill_id,
+                        "updated_skill": {
+                            "content": content,
+                            "note": note,
+                        },
+                    }
+                )
                 continue
-            normalized_operations.append(
-                {
-                    "type": "ADD",
-                    "section": section,
-                    "content": content,
-                }
-            )
+
+            parse_errors.append(f"operation {index} has unsupported type={operation_type}")
 
         return {
             "reasoning": reasoning,
@@ -244,181 +395,117 @@ class PredictionDiffCurator(FromDict):
             "parse_errors": parse_errors,
         }
 
-    def format_classification_results(self, classification_records: list[dict[str, Any]]) -> str:
-        if not classification_records:
-            return "(no classification results)"
+    def format_previous_trajectory(self, history: list[dict[str, Any]]) -> str:
+        if not history:
+            return "(no previous trajectory)"
 
         chunks: list[str] = []
-        for record in sorted(
-            classification_records,
-            key=lambda item: int(item.get("interaction_index") or 0),
-        ):
-            evidence = record.get("evidence") if isinstance(record.get("evidence"), dict) else {}
-            chunk = "\n".join(
-                [
-                    f"[Interaction {record.get('interaction_index')}]",
-                    f"primary_board: {record.get('primary_board', '')}",
-                    f"diff_category: {record.get('diff_category', '')}",
-                    "classifier_reasoning:",
-                    self.clip_text(str(record.get("reasoning") or ""), max_chars=1200),
-                    "evidence.current_reasoning_summary:",
-                    self.clip_text(str(evidence.get("current_reasoning_summary") or ""), max_chars=500),
-                    "evidence.key_predicted_claim:",
-                    self.clip_text(str(evidence.get("key_predicted_claim") or ""), max_chars=700),
-                    "evidence.key_actual_fact:",
-                    self.clip_text(str(evidence.get("key_actual_fact") or ""), max_chars=700),
-                ]
-            )
-            chunks.append(chunk)
-        return self.clip_text("\n\n".join(chunks), max_chars=self.max_classification_chars)
-
-    def format_full_conversation_history(self, interactions: list[dict[str, Any]]) -> str:
-        if not interactions:
-            return "(no reconstructed trajectory)"
-
-        chunks: list[str] = []
-        for interaction in interactions:
-            reasoning = str(interaction.get("current_reasoning") or "").strip()
-            code = str(interaction.get("current_code") or "")
-            actual_output = self.clip_text(str(interaction.get("actual_output") or ""))
-
-            lines = [f"[Interaction {interaction['interaction_index']}]"]
-            if reasoning:
-                lines.extend(
-                    [
-                        "ASSISTANT:",
-                        self.clip_text(reasoning, max_chars=2000),
-                        "",
-                    ]
-                )
-            lines.extend(
-                [
-                    "Code:",
-                    "```python",
-                    code,
-                    "```",
-                    "",
-                    "USER:",
-                    "Output:",
-                    "```",
-                    actual_output,
-                    "```",
-                ]
-            )
+        for entry in history:
+            lines = [
+                f"[Interaction {entry.get('interaction_index')}]",
+                "Action:",
+                "```python",
+                self.clip_text(str(entry.get("code") or ""), max_chars=2000),
+                "```",
+                "",
+                "Actual Observation:",
+                "```",
+                self.clip_text(str(entry.get("actual_observation") or ""), max_chars=2500),
+                "```",
+            ]
             chunks.append("\n".join(lines))
-
         return self.clip_text("\n\n".join(chunks), max_chars=self.max_history_chars)
 
-    def build_reconstructed_interactions(
+    def format_current_interaction(self, interaction: dict[str, Any]) -> str:
+        lines = [
+            f"Interaction Index: {interaction.get('interaction_index')}",
+            "Current Reasoning:",
+            "```",
+            self.clip_text(str(interaction.get("current_reasoning") or ""), max_chars=2500),
+            "```",
+            "",
+            "Current Action:",
+            "```python",
+            self.clip_text(str(interaction.get("current_code") or ""), max_chars=4000),
+            "```",
+            "",
+            "Predicted Observation:",
+            "```",
+            self.clip_text(str(interaction.get("predicted_observation") or ""), max_chars=3500),
+            "```",
+            "",
+            "Actual Observation:",
+            "```",
+            self.clip_text(str(interaction.get("actual_observation") or ""), max_chars=3500),
+            "```",
+        ]
+        return "\n".join(lines)
+
+    def format_current_classification(self, classification_record: dict[str, Any]) -> str:
+        classifier_reason = classification_record.get("reason") or classification_record.get("reasoning") or ""
+        lines = [
+            f"Primary Board: {classification_record.get('primary_board', '')}",
+            f"Diff Category: {classification_record.get('diff_category', '')}",
+            "Classifier Reasoning:",
+            "```",
+            self.clip_text(str(classifier_reason), max_chars=1800),
+            "```",
+        ]
+        return "\n".join(lines)
+
+    def format_current_skill_bucket(
         self,
-        environment_entries: list[dict[str, str]],
-        reconstructed_steps: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        interactions: list[dict[str, Any]] = []
-        step_cursor = 0
+        primary_board: str,
+        diff_category: str,
+        current_bucket: list[dict[str, Any]],
+    ) -> str:
+        payload = {
+            "primary_board": primary_board,
+            "diff_category": diff_category,
+            "skills": current_bucket,
+        }
+        return self.clip_text(json.dumps(payload, ensure_ascii=False, indent=2), max_chars=16000)
 
-        for index, environment_entry in enumerate(environment_entries):
-            current_code = environment_entry.get("input") or ""
-            current_actual_output = environment_entry.get("output") or ""
-
-            matched_step, step_cursor = self.match_step_for_code(
-                current_code=current_code,
-                reconstructed_steps=reconstructed_steps,
-                step_cursor=step_cursor,
-            )
-            current_reasoning = matched_step.get("reasoning") if matched_step else ""
-            interactions.append(
-                {
-                    "interaction_index": index + 1,
-                    "current_reasoning": current_reasoning,
-                    "current_code": current_code,
-                    "actual_output": current_actual_output,
-                }
-            )
-        return interactions
-
-    def match_step_for_code(
+    def format_next_interaction(
         self,
-        current_code: str,
-        reconstructed_steps: list[dict[str, Any]],
-        step_cursor: int,
-        lookahead: int = 4,
-    ) -> tuple[dict[str, Any] | None, int]:
-        normalized_current = self.normalize_code(current_code)
-        upper = min(len(reconstructed_steps), step_cursor + lookahead)
+        next_interaction: dict[str, Any] | None,
+        next_classification: dict[str, Any] | None,
+    ) -> str:
+        if not next_interaction:
+            return "(not provided)"
 
-        for candidate_index in range(step_cursor, upper):
-            candidate_code = self.normalize_code(reconstructed_steps[candidate_index].get("code") or "")
-            if candidate_code == normalized_current:
-                return reconstructed_steps[candidate_index], candidate_index + 1
-
-        if step_cursor < len(reconstructed_steps):
-            return reconstructed_steps[step_cursor], step_cursor + 1
-        return None, step_cursor
-
-    def extract_reconstructed_steps(self, lm_calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        steps = []
-        total_calls = len(lm_calls)
-        call_index = 0
-        while call_index < total_calls:
-            lm_call = lm_calls[call_index]
-            if self.is_prediction_call(lm_call):
-                call_index += 1
-                continue
-
-            output_content = self.extract_output_content(lm_call)
-            code, reasoning = self.extract_code_and_reasoning(output_content)
-            if not code.strip():
-                call_index += 1
-                continue
-
-            steps.append(
-                {
-                    "lm_call_index": call_index,
-                    "code": code,
-                    "reasoning": reasoning,
-                }
-            )
-            call_index += 1
-        return steps
-
-    def is_prediction_call(self, lm_call: dict[str, Any]) -> bool:
-        messages = lm_call["input"]["messages"]
-        for message in messages:
-            if message.get("role") != "user":
-                continue
-            content = str(message.get("content") or "")
-            if self.prediction_trigger_text in content:
-                return True
-        return False
-
-    def extract_output_content(self, lm_call: dict[str, Any]) -> str:
-        message = lm_call.get("output", {}).get("choices", [{}])[0].get("message", {})
-        return str(message.get("content") or "")
-
-    def extract_code_and_reasoning(self, text: str) -> tuple[str, str]:
-        if not text:
-            return "", ""
-
-        full_match = re.search(r"```python\n(.*?)```", text, flags=re.DOTALL)
-        if full_match:
-            code = full_match.group(1).strip()
-            reasoning = text[: full_match.start()].strip()
-            reasoning = re.sub(r"\n*Code:\s*$", "", reasoning).strip()
-            return code, reasoning
-
-        partial_match = re.search(r"```python\n(.*)$", text, flags=re.DOTALL)
-        if partial_match:
-            code = partial_match.group(1).strip()
-            reasoning = text[: partial_match.start()].strip()
-            reasoning = re.sub(r"\n*Code:\s*$", "", reasoning).strip()
-            return code, reasoning
-
-        return "", text.strip()
-
-    def normalize_code(self, code: str) -> str:
-        lines = [line.rstrip() for line in (code or "").strip().splitlines()]
-        return "\n".join(lines).strip()
+        payload = {
+            "interaction_index": next_interaction.get("interaction_index"),
+            "reasoning": self.clip_text(
+                str(next_interaction.get("current_reasoning") or ""),
+                max_chars=2000,
+            ),
+            "action": self.clip_text(
+                str(next_interaction.get("current_code") or ""),
+                max_chars=3000,
+            ),
+            "predicted_observation": self.clip_text(
+                str(next_interaction.get("predicted_observation") or ""),
+                max_chars=2500,
+            ),
+            "actual_observation": self.clip_text(
+                str(next_interaction.get("actual_observation") or ""),
+                max_chars=2500,
+            ),
+            "classification": {
+                "primary_board": next_classification.get("primary_board") if next_classification else "",
+                "diff_category": next_classification.get("diff_category") if next_classification else "",
+                "reasoning": self.clip_text(
+                    str(
+                        next_classification.get("reason")
+                        or next_classification.get("reasoning")
+                        or ""
+                    ) if next_classification else "",
+                    max_chars=1200,
+                ),
+            },
+        }
+        return self.clip_text(json.dumps(payload, ensure_ascii=False, indent=2), max_chars=12000)
 
     def clip_text(self, text: str, max_chars: int | None = None) -> str:
         max_chars = max_chars if max_chars is not None else self.max_field_chars
@@ -428,26 +515,20 @@ class PredictionDiffCurator(FromDict):
             return text
         return text[:max_chars] + "\n[TRUNCATED]"
 
-    def normalize_section(self, section: str) -> str:
-        return section.strip().lower().replace(" ", "_").replace("&", "and").rstrip(":")
+    def persist_skillbank(self) -> None:
+        os.makedirs(os.path.dirname(self.trained_skillbank_file_path), exist_ok=True)
+        write_json(self.skillbank, self.trained_skillbank_file_path, silent=True)
 
-    def persist_playbook(self) -> None:
-        os.makedirs(os.path.dirname(self.trained_playbook_file_path), exist_ok=True)
-        with open(self.trained_playbook_file_path, "w", encoding="utf-8") as file:
-            file.write(self.playbook)
-
-    def save_playbook_snapshot(self) -> None:
-        if not self.trained_playbook_file_path:
-            raise ValueError("trained_playbook_file_path is not set")
+    def save_skillbank_snapshot(self) -> None:
+        if not self.trained_skillbank_file_path:
+            raise ValueError("trained_skillbank_file_path is not set")
         snapshot_file_path = (
-            self.trained_playbook_file_path.split(".txt")[0]
-            + str(self.current_task_index + 1)
-            + ".txt"
+            self.trained_skillbank_file_path.rsplit(".json", 1)[0]
+            + f"_{self.current_task_index + 1}.json"
         )
-        with open(snapshot_file_path, "w", encoding="utf-8") as file:
-            file.write(self.playbook)
+        write_json(self.skillbank, snapshot_file_path, silent=True)
         print(
-            f"Saved playbook snapshot at task {self.current_task_index + 1}: "
+            f"Saved skillbank snapshot at task {self.current_task_index + 1}: "
             f"{snapshot_file_path}"
         )
 

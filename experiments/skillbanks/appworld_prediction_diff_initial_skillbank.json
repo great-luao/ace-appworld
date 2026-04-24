@@ -1,0 +1,34 @@
+{
+  "version": "v1",
+  "skill_id_counter": 1,
+  "buckets": {
+    "docs_lookup": {
+      "safe_abstraction": [],
+      "schema_or_name_mismatch": [],
+      "missing_decisive_information": [],
+      "value_or_state_mismatch": [],
+      "wrong_action_or_failure_mode": []
+    },
+    "auth": {
+      "safe_abstraction": [],
+      "schema_or_name_mismatch": [],
+      "missing_decisive_information": [],
+      "value_or_state_mismatch": [],
+      "wrong_action_or_failure_mode": []
+    },
+    "read_fetch": {
+      "safe_abstraction": [],
+      "schema_or_name_mismatch": [],
+      "missing_decisive_information": [],
+      "value_or_state_mismatch": [],
+      "wrong_action_or_failure_mode": []
+    },
+    "local_reasoning": {
+      "safe_abstraction": [],
+      "schema_or_name_mismatch": [],
+      "missing_decisive_information": [],
+      "value_or_state_mismatch": [],
+      "wrong_action_or_failure_mode": []
+    }
+  }
+}
