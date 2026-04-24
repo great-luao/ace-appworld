@@ -7,3 +7,4 @@ from appworld_experiments.code.ace.base_react import BaseSimplifiedReActAgent
 from appworld_experiments.code.ace.evaluation_react import SimplifiedReActAgent
 from appworld_experiments.code.ace.adaptation_react import SimplifiedReActStarAgent
 from appworld_experiments.code.ace.prediction_diff_classifier import PredictionDiffClassifier
+from appworld_experiments.code.ace.prediction_diff_retrieval import PredictionDiffRetrievalClassifier

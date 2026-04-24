@@ -27,6 +27,7 @@
 - `experiments/prompts/`: 主 prompt 与辅助注入 prompt。
 - `data/datasets/`: 数据集 task id 列表（可自定义子集）。
 - `experiments/outputs/`: 每次实验输出（logs、dbs、evaluation 报告）。
+- `experiments/skillbanks/`: 运用我们方法收集到的skillbank json文件。
 - `METHODS/`: 方法设计文档区；按主题拆分记录论文方法、算法设定、prompt 方案、分析维度与后续待验证假设。
 
 ## Code Style
@@ -79,5 +80,3 @@ execution_outputs = [
 - `experiments/code/ace/run.py`: run_type 到 agent 的分发入口。
 - `experiments/code/ace/base_agent.py`: non-ACE 任务循环与预测日志落盘。
 - `experiments/code/ace/base_react.py`: ReAct 主循环与 output prediction injection 逻辑。
-- `experiments/prompts/react.txt`: 主 ReAct prompt 模板。
-- `experiments/configs/ReAct_non_ACE_evaluation.jsonnet`: 当前主要实验配置。
