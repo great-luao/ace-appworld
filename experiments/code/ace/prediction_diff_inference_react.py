@@ -13,12 +13,24 @@ from appworld_experiments.code.ace.base_react import BaseSimplifiedReActAgent
 from appworld_experiments.code.ace.prediction_diff_retrieval import (
     PredictionDiffRetrievalClassifier,
 )
-from appworld_experiments.code.ace.skillbank import ensure_skillbank_shape, get_bucket
+from appworld_experiments.code.ace.skillbank import (
+    DIFF_CATEGORIES,
+    PRIMARY_BOARDS,
+    ensure_skillbank_shape,
+    get_bucket,
+)
 
 
 DEFAULT_RETRIEVAL_MIN_CLASS_SCORE = 0.15
 ROLLBACK_BOARDS = {"docs_lookup", "read_fetch"}
 POST_STATE_BOARDS = {"auth", "local_reasoning"}
+DEFAULT_SKILL_SELECTION_MODE = "bucket_topk"
+SKILL_SELECTION_MODES = {
+    "bucket_topk",
+    "full_skillbank",
+    "board_full",
+    "category_full",
+}
 
 
 @BaseAgent.register("prediction_diff_inference_react")
@@ -32,6 +44,8 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
         retrieval_evidence_top_n: int = 5,
         retrieval_min_class_score: float | None = DEFAULT_RETRIEVAL_MIN_CLASS_SCORE,
         skill_max_per_injection: int = 5,
+        skill_selection_mode: str = DEFAULT_SKILL_SELECTION_MODE,
+        enable_rollback: bool = True,
         max_rollbacks_per_step: int = 1,
         **kwargs: Any,
     ):
@@ -43,7 +57,13 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
         self.retrieval_evidence_top_n = retrieval_evidence_top_n
         self.retrieval_min_class_score = retrieval_min_class_score
         self.skill_max_per_injection = skill_max_per_injection
+        self.skill_selection_mode = skill_selection_mode
+        self.enable_rollback = enable_rollback
         self.max_rollbacks_per_step = max_rollbacks_per_step
+        if self.skill_selection_mode not in SKILL_SELECTION_MODES:
+            raise ValueError(
+                "skill_selection_mode must be one of: bucket_topk, full_skillbank, board_full, category_full."
+            )
 
         self.retrieval_classifier = PredictionDiffRetrievalClassifier.from_datapoints_file(
             datapoints_path=retrieval_datapoints_file_path.replace("/", os.sep),
@@ -70,8 +90,9 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
         self.skill_guidance_history = []
         self.pending_skill_guidance = ""
         self.latest_skill_guidance = ""
-        self._save_comparison_io_logs()
-        self._save_guided_environment_io_logs()
+        if self.enable_rollback:
+            self._save_comparison_io_logs()
+            self._save_guided_environment_io_logs()
         self._save_skill_guidance_history_log()
 
     def next_execution_inputs_and_cost(
@@ -107,10 +128,13 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
 
                 while regenerate_current_step:
                     regenerate_current_step = False
-                    checkpoint_id = world.save_state(
-                        f"pre_step_{self.step_number}_attempt_{rollback_count + 1}"
-                    )
-                    namespace_snapshot = self.snapshot_python_namespace(world)
+                    checkpoint_id = ""
+                    namespace_snapshot: dict[str, Any] = {}
+                    if self.enable_rollback:
+                        checkpoint_id = world.save_state(
+                            f"pre_step_{self.step_number}_attempt_{rollback_count + 1}"
+                        )
+                        namespace_snapshot = self.snapshot_python_namespace(world)
                     execution_inputs, cost = self.next_execution_inputs_and_cost([])
                     if len(execution_inputs) != 1:
                         raise ValueError("prediction_diff_inference_react expects one execution per step.")
@@ -148,7 +172,6 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
 
                     if decision["injection_mode"] == "rollback":
                         self.record_comparison_interaction(interaction_index)
-                        self.log_discarded_rollback_interaction(decision)
                         world.load_state(checkpoint_id)
                         self.restore_python_namespace(world, namespace_snapshot)
                         self.remove_last_assistant_message()
@@ -163,7 +186,10 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
                         execution_input=execution_input,
                         execution_output=execution_output,
                     )
-                    self.record_comparison_interaction(interaction_index)
+                    if self.enable_rollback:
+                        self.record_comparison_interaction(interaction_index)
+                    else:
+                        self._save_predicted_environment_io_log()
                     if decision["injection_mode"] == "post_state":
                         self.append_skill_guidance_message(decision)
 
@@ -190,29 +216,57 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
             "current_code": code,
             "predicted_output": predicted_output,
             "actual_output": execution_output.content,
+            "selection_mode": self.skill_selection_mode,
             "classification": None,
+            "selection_classification": None,
+            "policy_board": None,
+            "selection_board": None,
+            "selection_diff_category": None,
             "selected_skills": [],
+            "default_injection_mode": "none",
             "injection_mode": "none",
         }
         if not code.strip() or self.is_complete_task_action(code):
             return base_event
 
-        classification = self.retrieval_classifier.classify(
-            {
-                "current_code": code,
-                "predicted_output": predicted_output,
-                "actual_output": execution_output.content,
-            }
-        )
+        query_datapoint = {
+            "current_code": code,
+            "predicted_output": predicted_output,
+            "actual_output": execution_output.content,
+        }
+        classification = self.retrieval_classifier.classify(query_datapoint)
         base_event["classification"] = classification
-        if not classification["should_retrieve_skill"]:
+        primary_board = classification["predicted_board"]
+        base_event["policy_board"] = primary_board
+
+        selection_classification = None
+        selection_board = primary_board
+        selection_diff_category = classification["predicted_diff_category"]
+        should_retrieve_skill = classification["should_retrieve_skill"]
+
+        if self.skill_selection_mode == "category_full":
+            selection_classification = self.retrieval_classifier.classify_global_category(
+                query_datapoint
+            )
+            base_event["selection_classification"] = selection_classification
+            selection_board = None
+            selection_diff_category = selection_classification["predicted_diff_category"]
+            should_retrieve_skill = (
+                selection_classification["should_retrieve_skill"]
+                and primary_board in PRIMARY_BOARDS
+            )
+        else:
+            base_event["selection_classification"] = classification
+
+        base_event["selection_board"] = selection_board
+        base_event["selection_diff_category"] = selection_diff_category
+
+        if not should_retrieve_skill:
             return base_event
 
-        primary_board = classification["predicted_board"]
-        diff_category = classification["predicted_diff_category"]
         selected_skills = self.select_skills(
-            primary_board=primary_board,
-            diff_category=diff_category,
+            primary_board=selection_board,
+            diff_category=selection_diff_category,
             current_code=code,
             predicted_output=predicted_output,
             actual_output=execution_output.content,
@@ -222,8 +276,10 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
             return base_event
 
         if primary_board in ROLLBACK_BOARDS:
-            base_event["injection_mode"] = "rollback"
+            base_event["default_injection_mode"] = "rollback"
+            base_event["injection_mode"] = "rollback" if self.enable_rollback else "post_state"
         elif primary_board in POST_STATE_BOARDS:
+            base_event["default_injection_mode"] = "post_state"
             base_event["injection_mode"] = "post_state"
         return base_event
 
@@ -235,6 +291,13 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
         predicted_output: str,
         actual_output: str,
     ) -> list[dict[str, Any]]:
+        if self.skill_selection_mode == "full_skillbank":
+            return self.select_all_skills_from_skillbank()
+        if self.skill_selection_mode == "board_full":
+            return self.select_all_skills_from_board(primary_board)
+        if self.skill_selection_mode == "category_full":
+            return self.select_all_skills_from_category(diff_category)
+
         bucket = get_bucket(self.skillbank, primary_board, diff_category)
         if len(bucket) <= self.skill_max_per_injection:
             return [self.format_selected_skill(skill, score=None) for skill in bucket]
@@ -255,6 +318,32 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
         selected = []
         for index in ranked_indices[: self.skill_max_per_injection]:
             selected.append(self.format_selected_skill(bucket[index], score=float(scores[index])))
+        return selected
+
+    def select_all_skills_from_skillbank(self) -> list[dict[str, Any]]:
+        selected = []
+        for primary_board in PRIMARY_BOARDS:
+            for diff_category in DIFF_CATEGORIES:
+                for skill in get_bucket(self.skillbank, primary_board, diff_category):
+                    selected.append(self.format_selected_skill(skill, score=None))
+        return selected
+
+    def select_all_skills_from_board(self, primary_board: str | None) -> list[dict[str, Any]]:
+        if primary_board not in PRIMARY_BOARDS:
+            return []
+        selected = []
+        for diff_category in DIFF_CATEGORIES:
+            for skill in get_bucket(self.skillbank, primary_board, diff_category):
+                selected.append(self.format_selected_skill(skill, score=None))
+        return selected
+
+    def select_all_skills_from_category(self, diff_category: str | None) -> list[dict[str, Any]]:
+        if diff_category not in DIFF_CATEGORIES:
+            return []
+        selected = []
+        for primary_board in PRIMARY_BOARDS:
+            for skill in get_bucket(self.skillbank, primary_board, diff_category):
+                selected.append(self.format_selected_skill(skill, score=None))
         return selected
 
     def format_selected_skill(self, skill: dict[str, Any], score: float | None) -> dict[str, Any]:
@@ -282,14 +371,15 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
                 "content": "Output:\n```\n" + execution_output.content + "```\n\n",
             }
         )
-        self.guided_environment_io.append(
-            {"input": execution_input.content, "output": execution_output.content.rstrip()}
-        )
         predicted_output = execution_input.metadata.get("predicted_output", "") or ""
-        self.guided_predicted_environment_io.append(
-            {"input": execution_input.content, "output": predicted_output.rstrip()}
-        )
-        self._save_guided_environment_io_logs()
+        if self.enable_rollback:
+            self.guided_environment_io.append(
+                {"input": execution_input.content, "output": execution_output.content.rstrip()}
+            )
+            self.guided_predicted_environment_io.append(
+                {"input": execution_input.content, "output": predicted_output.rstrip()}
+            )
+            self._save_guided_environment_io_logs()
 
     def record_comparison_interaction(self, interaction_index: int) -> None:
         expected_index = self.step_number - 1
@@ -315,11 +405,18 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
 
     def format_skill_guidance_history_entry(self, decision: dict[str, Any]) -> str:
         classification = decision.get("classification") or {}
+        selection_classification = decision.get("selection_classification") or {}
         selected_skills = decision.get("selected_skills") or []
         lines = [
+            f"selection_mode: {decision.get('selection_mode') or '(none)'}",
+            f"policy_board: {decision.get('policy_board') or '(none)'}",
             "classification:",
             f"board: {classification.get('predicted_board') or '(none)'}",
             f"diff_category: {classification.get('predicted_diff_category') or '(none)'}",
+            "selection:",
+            f"board: {decision.get('selection_board') or '(all boards)'}",
+            f"diff_category: {decision.get('selection_diff_category') or '(none)'}",
+            f"confidence: {selection_classification.get('classification_confidence')}",
             "skills:",
         ]
         if not selected_skills:
@@ -342,9 +439,78 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
             "Verify API names, parameters, schemas, and values against actual API docs and environment outputs.",
         ]
         lines.append("")
-        for skill in decision["selected_skills"]:
-            lines.append(f"[{skill['skill_id']}] {skill['content']}")
+        if self.skill_selection_mode == "full_skillbank":
+            lines.extend(self.build_full_skillbank_guidance_lines(decision["selected_skills"]))
+        elif self.skill_selection_mode == "board_full":
+            lines.extend(self.build_board_full_guidance_lines(decision["selected_skills"]))
+        elif self.skill_selection_mode == "category_full":
+            lines.extend(self.build_category_full_guidance_lines(decision["selected_skills"]))
+        else:
+            for skill in decision["selected_skills"]:
+                lines.append(f"[{skill['skill_id']}] {skill['content']}")
         return "\n".join(lines).rstrip() + "\n\n"
+
+    def build_full_skillbank_guidance_lines(self, selected_skills: list[dict[str, Any]]) -> list[str]:
+        grouped_skills: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        for skill in selected_skills:
+            source = skill.get("source", {})
+            primary_board = str(source.get("primary_board") or "unknown")
+            diff_category = str(source.get("diff_category") or "unknown")
+            grouped_skills.setdefault((primary_board, diff_category), []).append(skill)
+
+        lines: list[str] = []
+        for primary_board in PRIMARY_BOARDS:
+            board_lines = []
+            for diff_category in DIFF_CATEGORIES:
+                skills = grouped_skills.get((primary_board, diff_category), [])
+                if not skills:
+                    continue
+                board_lines.append(f"{primary_board} / {diff_category}:")
+                for skill in skills:
+                    board_lines.append(f"[{skill['skill_id']}] {skill['content']}")
+            if board_lines:
+                if lines:
+                    lines.append("")
+                lines.extend(board_lines)
+        return lines
+
+    def build_board_full_guidance_lines(self, selected_skills: list[dict[str, Any]]) -> list[str]:
+        grouped_skills: dict[str, list[dict[str, Any]]] = {}
+        for skill in selected_skills:
+            source = skill.get("source", {})
+            diff_category = str(source.get("diff_category") or "unknown")
+            grouped_skills.setdefault(diff_category, []).append(skill)
+
+        lines: list[str] = []
+        for diff_category in DIFF_CATEGORIES:
+            skills = grouped_skills.get(diff_category, [])
+            if not skills:
+                continue
+            if lines:
+                lines.append("")
+            lines.append(f"{diff_category}:")
+            for skill in skills:
+                lines.append(f"[{skill['skill_id']}] {skill['content']}")
+        return lines
+
+    def build_category_full_guidance_lines(self, selected_skills: list[dict[str, Any]]) -> list[str]:
+        grouped_skills: dict[str, list[dict[str, Any]]] = {}
+        for skill in selected_skills:
+            source = skill.get("source", {})
+            primary_board = str(source.get("primary_board") or "unknown")
+            grouped_skills.setdefault(primary_board, []).append(skill)
+
+        lines: list[str] = []
+        for primary_board in PRIMARY_BOARDS:
+            skills = grouped_skills.get(primary_board, [])
+            if not skills:
+                continue
+            if lines:
+                lines.append("")
+            lines.append(f"{primary_board}:")
+            for skill in skills:
+                lines.append(f"[{skill['skill_id']}] {skill['content']}")
+        return lines
 
     def remove_message_at_index(self, index: int) -> None:
         if index >= len(self.messages):
@@ -378,9 +544,6 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
 
     def log_skill_injection_event(self, event: dict[str, Any]) -> None:
         self.append_jsonl("skill_injection_events.jsonl", event)
-
-    def log_discarded_rollback_interaction(self, event: dict[str, Any]) -> None:
-        self.append_jsonl("discarded_rollback_interactions.jsonl", event)
 
     def append_jsonl(self, file_name: str, payload: dict[str, Any]) -> None:
         file_path = os.path.join(self.world.output_logs_directory, file_name)

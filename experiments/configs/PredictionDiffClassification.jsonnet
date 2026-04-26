@@ -28,7 +28,7 @@ local classifier_model_config = {
             "type": "prediction_diff_classifier",
             "classifier_model_config": classifier_model_config,
             "classifier_prompt_file_path": experiment_prompts_path + "/prediction_diff_classifier_prompt_v2.txt",
-            "source_experiment_name": "ReAct_non_ACE_evaluation",
+            "source_experiment_name": "ReAct_train_trajectories",
             "max_interactions_per_task": null,
             "max_field_chars": 10000,
             "max_history_chars": 100000,

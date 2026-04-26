@@ -323,7 +323,11 @@ class PredictionDiffRetrievalClassifier:
         self.min_class_score = min_class_score
         self.backend = build_backend(backend_name)
         self.backend.fit(self.datapoints)
-        self.board_to_indices, self.board_to_diff_to_indices = self.build_index_maps(self.datapoints)
+        (
+            self.board_to_indices,
+            self.board_to_diff_to_indices,
+            self.diff_to_indices,
+        ) = self.build_index_maps(self.datapoints)
 
     @classmethod
     def from_datapoints_file(
@@ -349,6 +353,13 @@ class PredictionDiffRetrievalClassifier:
     ) -> dict[str, Any]:
         query = normalize_datapoint(query_datapoint, require_labels=False)
         scores = self.backend.score_query(query)
+        return self.classify_with_scores(scores, min_class_score=min_class_score)
+
+    def classify_with_scores(
+        self,
+        scores: np.ndarray,
+        min_class_score: float | None | object = CLASS_SCORE_UNSET,
+    ) -> dict[str, Any]:
         board_candidate_indices = [
             index for indices in self.board_to_indices.values() for index in indices
         ]
@@ -425,21 +436,81 @@ class PredictionDiffRetrievalClassifier:
             "top_evidence": self.collect_top_evidence(scores),
         }
 
+    def classify_global_category(
+        self,
+        query_datapoint: dict[str, Any],
+        min_class_score: float | None | object = CLASS_SCORE_UNSET,
+    ) -> dict[str, Any]:
+        query = normalize_datapoint(query_datapoint, require_labels=False)
+        scores = self.backend.score_query(query)
+        return self.classify_global_category_with_scores(scores, min_class_score=min_class_score)
+
+    def classify_global_category_with_scores(
+        self,
+        scores: np.ndarray,
+        min_class_score: float | None | object = CLASS_SCORE_UNSET,
+    ) -> dict[str, Any]:
+        category_candidate_indices = [
+            index for diff_indices in self.diff_to_indices.values() for index in diff_indices
+        ]
+        category_scores = aggregate_class_scores(
+            scores=scores,
+            candidate_indices=category_candidate_indices,
+            train_datapoints=self.datapoints,
+            label_key="diff_category",
+            top_k=self.top_k,
+        )
+        predicted_diff_category = pick_best_label(category_scores)
+        max_category_score = max_top_k_mean(category_scores)
+        effective_min_class_score = (
+            self.min_class_score if min_class_score is CLASS_SCORE_UNSET else min_class_score
+        )
+        category_low_confidence = (
+            effective_min_class_score is not None
+            and max_category_score < effective_min_class_score
+        )
+        should_retrieve_skill = (
+            predicted_diff_category in SKILL_DIFF_CATEGORIES
+            and predicted_diff_category not in SKIPPED_SKILL_DIFF_CATEGORIES
+            and not category_low_confidence
+        )
+        return {
+            "taxonomy_version": RETRIEVAL_TAXONOMY_VERSION,
+            "backend": self.backend_name,
+            "top_k": self.top_k,
+            "min_class_score": effective_min_class_score,
+            "max_category_score": max_category_score,
+            "classification_confidence": max_category_score,
+            "low_confidence_no_skill": category_low_confidence,
+            "predicted_diff_category": predicted_diff_category,
+            "should_retrieve_skill": should_retrieve_skill,
+            "category_scores": category_scores,
+            "top_evidence": self.collect_top_evidence(scores),
+        }
+
     @staticmethod
     def build_index_maps(
         datapoints: list[dict[str, Any]],
-    ) -> tuple[dict[str, list[int]], dict[str, dict[str, list[int]]]]:
+    ) -> tuple[
+        dict[str, list[int]],
+        dict[str, dict[str, list[int]]],
+        dict[str, list[int]],
+    ]:
         board_to_indices: defaultdict[str, list[int]] = defaultdict(list)
         board_to_diff_to_indices: defaultdict[str, defaultdict[str, list[int]]] = defaultdict(
             lambda: defaultdict(list)
         )
+        diff_to_indices: defaultdict[str, list[int]] = defaultdict(list)
         for index, item in enumerate(datapoints):
             board_to_indices[item["primary_board"]].append(index)
             if item["primary_board"] != "other" and item["diff_category"]:
                 board_to_diff_to_indices[item["primary_board"]][item["diff_category"]].append(index)
-        return dict(board_to_indices), {
-            board: dict(diff_to_indices) for board, diff_to_indices in board_to_diff_to_indices.items()
-        }
+                diff_to_indices[item["diff_category"]].append(index)
+        return (
+            dict(board_to_indices),
+            {board: dict(diff_to_indices) for board, diff_to_indices in board_to_diff_to_indices.items()},
+            dict(diff_to_indices),
+        )
 
     def collect_top_evidence(self, scores: np.ndarray) -> list[dict[str, Any]]:
         if len(scores) == 0:

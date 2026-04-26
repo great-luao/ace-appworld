@@ -37,13 +37,13 @@ local generator_model_config = {
                 "verbose": false,
             },
             "generator_prompt_file_path": experiment_prompts_path + "/appworld_react_generator_prompt.txt",
-            "trained_playbook_file_path": experiment_playbooks_path + "/appworld_offline_trained_no_gt_playbook_diff3.txt",  
+            "trained_playbook_file_path": experiment_playbooks_path + "/appworld_prediction_diff_skillbank_diff3_playbook.txt",  
             "ignore_multiple_calls": true,
             "max_steps": 40,
             "max_cost_overall": 1000,
             "max_cost_per_task": 10,
             "log_lm_calls": false,
         },
-        "dataset": "test_normal",
+        "dataset": "test_normal_difficulty_3_random32",
     }
 }
