@@ -4277,8 +4277,16 @@ class freeze_time(ContextDecorator):  # noqa: N801
         return self
 
     def stop(self) -> None:
-        if self._freezer is not None:
-            self._freezer.stop()
+        freezer = self._freezer
+        self._freezer = None
+        if freezer is None:
+            return
+        try:
+            freezer.stop()
+        except Exception:
+            # freezegun cleanup can fail while walking mutated module state during teardown.
+            # Treat stop as best-effort so successful task runs do not fail during final cleanup.
+            return
 
     def __enter__(self) -> Self:
         return self.start()

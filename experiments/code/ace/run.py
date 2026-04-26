@@ -9,6 +9,9 @@ from appworld_experiments.code.ace.base_agent import BaseAgent
 from appworld_experiments.code.ace.evaluation_agent import Agent
 from appworld_experiments.code.ace.prediction_diff_classifier import PredictionDiffClassifier
 from appworld_experiments.code.ace.prediction_diff_curator import PredictionDiffCurator
+from appworld_experiments.code.ace.prediction_diff_inference_react import (
+    PredictionDiffInferenceReActAgent,
+)
 
 
 def _build_prediction_diff_agent(agent_config: dict[str, Any]) -> PredictionDiffClassifier:
@@ -31,6 +34,19 @@ def _build_prediction_diff_curator(agent_config: dict[str, Any]) -> PredictionDi
             "Expected 'prediction_diff_curator'."
         )
     return PredictionDiffCurator(**config)
+
+
+def _build_prediction_diff_inference_agent(
+    agent_config: dict[str, Any],
+) -> PredictionDiffInferenceReActAgent:
+    config = copy.deepcopy(agent_config)
+    config_type = config.pop("type", None)
+    if config_type and config_type != "prediction_diff_inference_react":
+        raise ValueError(
+            f"Invalid prediction-diff inference agent type: {config_type}. "
+            "Expected 'prediction_diff_inference_react'."
+        )
+    return PredictionDiffInferenceReActAgent(**config)
 
 
 def _filter_existing_output_task_ids(
@@ -145,6 +161,9 @@ def run_experiment(
                 "playbook updates are sequential across tasks."
             )
 
+    if run_type == "prediction-diff-inference" and num_epochs != 1:
+        raise ValueError("prediction-diff-inference only supports num_epochs=1.")
+
     task_ids = _resolve_task_ids(runner_config, task_id=task_id)
 
     if runner_config:
@@ -189,6 +208,8 @@ def run_experiment(
         agent = _build_prediction_diff_agent(agent_config)
     elif run_type == "prediction-diff-curation":
         agent = _build_prediction_diff_curator(agent_config)
+    elif run_type == "prediction-diff-inference":
+        agent = _build_prediction_diff_inference_agent(agent_config)
     else:
         raise ValueError(f"Unknown run_type: {run_type}")
 

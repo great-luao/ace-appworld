@@ -33,6 +33,7 @@ DEFAULT_INDEX_DIR_NAME = "retrieval_index"
 DEFAULT_DATAPOINTS_FILE_NAME = "datapoints.jsonl"
 DEFAULT_METADATA_FILE_NAME = "metadata.json"
 SKIPPED_SKILL_DIFF_CATEGORIES = {"", "match"}
+CLASS_SCORE_UNSET = object()
 
 
 def resolve_source_output_dir(
@@ -313,11 +314,13 @@ class PredictionDiffRetrievalClassifier:
         backend_name: str = "hybrid_tfidf",
         top_k: int = DEFAULT_TOP_K,
         evidence_top_n: int = 5,
+        min_class_score: float | None = None,
     ) -> None:
         self.datapoints = [normalize_datapoint(item, require_labels=True) for item in datapoints]
         self.backend_name = backend_name
         self.top_k = top_k
         self.evidence_top_n = evidence_top_n
+        self.min_class_score = min_class_score
         self.backend = build_backend(backend_name)
         self.backend.fit(self.datapoints)
         self.board_to_indices, self.board_to_diff_to_indices = self.build_index_maps(self.datapoints)
@@ -329,15 +332,21 @@ class PredictionDiffRetrievalClassifier:
         backend_name: str = "hybrid_tfidf",
         top_k: int = DEFAULT_TOP_K,
         evidence_top_n: int = 5,
+        min_class_score: float | None = None,
     ) -> "PredictionDiffRetrievalClassifier":
         return cls(
             datapoints=load_retrieval_datapoints(datapoints_path),
             backend_name=backend_name,
             top_k=top_k,
             evidence_top_n=evidence_top_n,
+            min_class_score=min_class_score,
         )
 
-    def classify(self, query_datapoint: dict[str, Any]) -> dict[str, Any]:
+    def classify(
+        self,
+        query_datapoint: dict[str, Any],
+        min_class_score: float | None | object = CLASS_SCORE_UNSET,
+    ) -> dict[str, Any]:
         query = normalize_datapoint(query_datapoint, require_labels=False)
         scores = self.backend.score_query(query)
         board_candidate_indices = [
@@ -351,9 +360,11 @@ class PredictionDiffRetrievalClassifier:
             top_k=self.top_k,
         )
         predicted_board = pick_best_label(board_scores)
+        max_board_score = max_top_k_mean(board_scores)
 
         category_scores = {}
         predicted_diff_category = OTHER_BOARD_CATEGORY
+        max_category_score = None
         if predicted_board != "other":
             category_candidate_indices = [
                 index
@@ -368,12 +379,39 @@ class PredictionDiffRetrievalClassifier:
                 top_k=self.top_k,
             )
             predicted_diff_category = pick_best_label(category_scores)
+            max_category_score = max_top_k_mean(category_scores)
 
-        should_retrieve_skill = is_skill_actionable(predicted_board, predicted_diff_category)
+        effective_min_class_score = (
+            self.min_class_score if min_class_score is CLASS_SCORE_UNSET else min_class_score
+        )
+        board_low_confidence = (
+            effective_min_class_score is not None
+            and max_board_score < effective_min_class_score
+        )
+        category_low_confidence = (
+            effective_min_class_score is not None
+            and max_category_score is not None
+            and max_category_score < effective_min_class_score
+        )
+        low_confidence_no_skill = board_low_confidence or category_low_confidence
+        classification_confidence = (
+            min(max_board_score, max_category_score)
+            if max_category_score is not None
+            else max_board_score
+        )
+        should_retrieve_skill = (
+            is_skill_actionable(predicted_board, predicted_diff_category)
+            and not low_confidence_no_skill
+        )
         return {
             "taxonomy_version": RETRIEVAL_TAXONOMY_VERSION,
             "backend": self.backend_name,
             "top_k": self.top_k,
+            "min_class_score": effective_min_class_score,
+            "max_board_score": max_board_score,
+            "max_category_score": max_category_score,
+            "classification_confidence": classification_confidence,
+            "low_confidence_no_skill": low_confidence_no_skill,
             "predicted_board": predicted_board,
             "predicted_diff_category": predicted_diff_category,
             "should_retrieve_skill": should_retrieve_skill,
@@ -430,3 +468,9 @@ def is_skill_actionable(primary_board: str, diff_category: str) -> bool:
         and diff_category in SKILL_DIFF_CATEGORIES
         and diff_category not in SKIPPED_SKILL_DIFF_CATEGORIES
     )
+
+
+def max_top_k_mean(score_map: dict[str, dict[str, float]]) -> float:
+    if not score_map:
+        return float("-inf")
+    return max(float(score["top_k_mean"]) for score in score_map.values())

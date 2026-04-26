@@ -79,6 +79,12 @@ def parse_args() -> argparse.Namespace:
     classify_parser.add_argument("--top-k", type=int, default=DEFAULT_TOP_K)
     classify_parser.add_argument("--evidence-top-n", type=int, default=5)
     classify_parser.add_argument(
+        "--min-class-score",
+        type=float,
+        default=None,
+        help="Optional top_k_mean confidence threshold below which no skill is retrieved.",
+    )
+    classify_parser.add_argument(
         "--output-file",
         default=None,
         help="Optional path for the classification JSON result. Defaults to stdout.",
@@ -139,6 +145,7 @@ def main() -> None:
             backend_name=args.backend,
             top_k=args.top_k,
             evidence_top_n=args.evidence_top_n,
+            min_class_score=args.min_class_score,
         )
         result = classifier.classify(query)
         if args.output_file:
