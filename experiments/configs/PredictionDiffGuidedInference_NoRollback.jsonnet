@@ -38,7 +38,7 @@ local generator_model_config = {
             },
             "generator_prompt_file_path": experiment_prompts_path + "/appworld_react_generator_with_prediction_diff_skills_prompt.txt",
             "retrieval_datapoints_file_path": experiment_outputs_path + "/ReAct_train_trajectories/retrieval_index/datapoints.jsonl",
-            "skillbank_file_path": experiment_skillbanks_path + "/appworld_prediction_diff_skillbank_diff3.json",
+            "skillbank_file_path": experiment_skillbanks_path + "/appworld_prediction_diff_skillbank_diff321.json",
             "retrieval_backend_name": "hybrid_tfidf",
             "retrieval_top_k": 5,
             "retrieval_evidence_top_n": 5,

@@ -1,8 +1,6 @@
 local project_home_path = std.extVar("APPWORLD_PROJECT_PATH");
 local experiment_prompts_path = project_home_path + "/experiments/prompts";
 local experiment_playbooks_path = project_home_path + "/experiments/playbooks";
-local experiment_configs_path = project_home_path + "/experiments/configs";
-local experiment_code_path = project_home_path + "/experiments/code";
 
 local generator_model_config = {
     "name": "gpt-5.4",
@@ -37,14 +35,14 @@ local generator_model_config = {
                 "verbose": false,
             },
             "generator_prompt_file_path": experiment_prompts_path + "/appworld_react_generator_prompt.txt",
-            "trained_playbook_file_path": experiment_playbooks_path + "/appworld_prediction_diff_skillbank_diff321_playbook.txt",  
+            "trained_playbook_file_path": experiment_playbooks_path + "/appworld_prediction_diff_skillbank_diff3+2+1_playbook.txt",
             "ignore_multiple_calls": true,
             "max_steps": 40,
             "max_cost_overall": 1000,
             "max_cost_per_task": 10,
             "log_lm_calls": false,
         },
-        "dataset": "test_normal_difficulty_3_random32",
+        "dataset": "test_normal_difficulty_3",
         "skip_existing_outputs": true,
     }
 }
