@@ -355,6 +355,111 @@ class PredictionDiffRetrievalClassifier:
         scores = self.backend.score_query(query)
         return self.classify_with_scores(scores, min_class_score=min_class_score)
 
+    def classify_multi_bucket(
+        self,
+        query_datapoint: dict[str, Any],
+        min_class_score: float | None | object = CLASS_SCORE_UNSET,
+    ) -> dict[str, Any]:
+        query = normalize_datapoint(query_datapoint, require_labels=False)
+        scores = self.backend.score_query(query)
+        return self.classify_multi_bucket_with_scores(scores, min_class_score=min_class_score)
+
+    def classify_multi_bucket_with_scores(
+        self,
+        scores: np.ndarray,
+        min_class_score: float | None | object = CLASS_SCORE_UNSET,
+    ) -> dict[str, Any]:
+        board_candidate_indices = [
+            index for indices in self.board_to_indices.values() for index in indices
+        ]
+        board_scores = aggregate_class_scores(
+            scores=scores,
+            candidate_indices=board_candidate_indices,
+            train_datapoints=self.datapoints,
+            label_key="primary_board",
+            top_k=self.top_k,
+        )
+        predicted_board = pick_best_label(board_scores)
+        max_board_score = max_top_k_mean(board_scores)
+
+        effective_min_class_score = (
+            self.min_class_score if min_class_score is CLASS_SCORE_UNSET else min_class_score
+        )
+        selected_buckets = []
+        category_scores_by_board = {}
+
+        for primary_board in SKILL_PRIMARY_BOARDS:
+            board_score = board_scores.get(primary_board, {})
+            if not board_score:
+                continue
+            board_top_k_mean = float(board_score.get("top_k_mean", float("-inf")))
+            if (
+                effective_min_class_score is not None
+                and board_top_k_mean < effective_min_class_score
+            ):
+                continue
+
+            category_candidate_indices = [
+                index
+                for indices in self.board_to_diff_to_indices.get(primary_board, {}).values()
+                for index in indices
+            ]
+            category_scores = aggregate_class_scores(
+                scores=scores,
+                candidate_indices=category_candidate_indices,
+                train_datapoints=self.datapoints,
+                label_key="diff_category",
+                top_k=self.top_k,
+            )
+            category_scores_by_board[primary_board] = category_scores
+
+            for diff_category in SKILL_DIFF_CATEGORIES:
+                if diff_category in SKIPPED_SKILL_DIFF_CATEGORIES:
+                    continue
+                category_score = category_scores.get(diff_category, {})
+                if not category_score:
+                    continue
+                category_top_k_mean = float(category_score.get("top_k_mean", float("-inf")))
+                if (
+                    effective_min_class_score is not None
+                    and category_top_k_mean < effective_min_class_score
+                ):
+                    continue
+                selected_buckets.append(
+                    {
+                        "primary_board": primary_board,
+                        "diff_category": diff_category,
+                        "board_score": board_top_k_mean,
+                        "category_score": category_top_k_mean,
+                        "bucket_score": min(board_top_k_mean, category_top_k_mean),
+                        "board_support": board_score.get("support", 0),
+                        "category_support": category_score.get("support", 0),
+                    }
+                )
+
+        selected_buckets = sorted(
+            selected_buckets,
+            key=lambda bucket: (
+                -float(bucket["bucket_score"]),
+                -float(bucket["board_score"]),
+                bucket["primary_board"],
+                bucket["diff_category"],
+            ),
+        )
+        return {
+            "taxonomy_version": RETRIEVAL_TAXONOMY_VERSION,
+            "backend": self.backend_name,
+            "top_k": self.top_k,
+            "min_class_score": effective_min_class_score,
+            "max_board_score": max_board_score,
+            "predicted_board": predicted_board,
+            "should_retrieve_skill": bool(selected_buckets),
+            "selected_buckets": selected_buckets,
+            "board_scores": board_scores,
+            "category_scores_by_board": category_scores_by_board,
+            "top_evidence": self.collect_top_evidence(scores),
+        }
+
     def classify_with_scores(
         self,
         scores: np.ndarray,
