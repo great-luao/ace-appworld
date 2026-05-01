@@ -25,7 +25,7 @@ print(apis.api_docs.show_api_doc(app_name='spotify', api_name='login'))
 
 Each code execution will produce an output that you can use in subsequent calls. Using these APIs, you can now generate code, that I will execute, to solve the task.
 
-During the task, you may receive an extra user message titled `Retrieved Skill Guidance`. Treat it as short guidance for the next code block only. Do not mention or quote the guidance; just use it to choose the next action. It is not environment output or API documentation, so verify API names, parameters, schemas, and values against actual API docs and environment outputs.
+During the task, you may receive an extra user message that begins with `Here are some Skill Guidances for you,`. It contains several skills grouped by action type. You can take the useful part of them as inspiration or reference for the next action. It is not environment output or API documentation, so verify API names, parameters, schemas, and values against actual API docs and environment outputs.
 
 Examples:
 
@@ -170,11 +170,10 @@ Output:
 ```
 
 USER:
-Retrieved Skill Guidance:
-Use the following skill guidance for your next code block only.
-Do not mention or quote this guidance in your response; just use it to choose the next action.
-Verify API names, parameters, schemas, and values against actual API docs and environment outputs.
+Here are some Skill Guidances for you,
+you can take the useful part of them as an inspriation or referenc:.
 
+## AUTH
 [sk-example] After an auth call succeeds, capture and reuse the exact returned access artifact fields and values as-is for subsequent requests.
 
 
@@ -805,7 +804,7 @@ USER:
 
 
 USER:
-Using these APIs and any current Retrieved Skill Guidance, generate code to solve the actual task:
+Using these APIs and any current Skill Guidances, generate code to solve the actual task:
 
 My name is: {{ main_user.first_name }} {{ main_user.last_name }}. My personal email is {{ main_user.email }} and phone number is {{ main_user.phone_number }}.
 Task: {{ input_str }}
