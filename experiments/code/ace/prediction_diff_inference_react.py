@@ -14,7 +14,6 @@ from appworld_experiments.code.ace.prediction_diff_retrieval import (
     PredictionDiffRetrievalClassifier,
 )
 from appworld_experiments.code.ace.skillbank import (
-    DIFF_CATEGORIES,
     PRIMARY_BOARDS,
     ensure_skillbank_shape,
     get_bucket,
@@ -22,12 +21,13 @@ from appworld_experiments.code.ace.skillbank import (
 
 
 DEFAULT_RETRIEVAL_MIN_CLASS_SCORE = 0.15
-DEFAULT_SKILL_SELECTION_MODE = "bucket_topk"
-SKILL_SELECTION_MODES = {
-    "bucket_topk",
-    "full_skillbank",
-    "board_full",
-    "category_full",
+DEFAULT_SKILL_SELECTION_MODE = "multi_bucket"
+SKILL_SELECTION_MODES = {"multi_bucket"}
+PRIMARY_BOARD_TITLES = {
+    "docs_lookup": "DOCS LOOKUP",
+    "auth": "AUTH",
+    "read_fetch": "READ FETCH",
+    "local_reasoning": "LOCAL REASONING",
 }
 
 
@@ -41,7 +41,6 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
         retrieval_top_k: int = 5,
         retrieval_evidence_top_n: int = 5,
         retrieval_min_class_score: float | None = DEFAULT_RETRIEVAL_MIN_CLASS_SCORE,
-        skill_max_per_injection: int = 5,
         skill_selection_mode: str = DEFAULT_SKILL_SELECTION_MODE,
         **kwargs: Any,
     ):
@@ -52,12 +51,9 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
         self.retrieval_top_k = retrieval_top_k
         self.retrieval_evidence_top_n = retrieval_evidence_top_n
         self.retrieval_min_class_score = retrieval_min_class_score
-        self.skill_max_per_injection = skill_max_per_injection
         self.skill_selection_mode = skill_selection_mode
         if self.skill_selection_mode not in SKILL_SELECTION_MODES:
-            raise ValueError(
-                "skill_selection_mode must be one of: bucket_topk, full_skillbank, board_full, category_full."
-            )
+            raise ValueError("skill_selection_mode must be 'multi_bucket'.")
 
         self.retrieval_classifier = PredictionDiffRetrievalClassifier.from_datapoints_file(
             datapoints_path=retrieval_datapoints_file_path.replace("/", os.sep),
@@ -107,6 +103,15 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
             for _ in range(self.max_steps):
                 self.step_number += 1
                 execution_inputs, cost = self.next_execution_inputs_and_cost([])
+                execution_inputs = [
+                    execution_input
+                    for execution_input in execution_inputs
+                    if (execution_input.content or "").strip()
+                ]
+                if not execution_inputs:
+                    self.cost_tracker.add(task_id, cost)
+                    self.log_cost()
+                    break
                 if len(execution_inputs) != 1:
                     raise ValueError("prediction_diff_inference_react expects one execution per step.")
 
@@ -160,8 +165,7 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
             "classification": None,
             "selection_classification": None,
             "policy_board": None,
-            "selection_board": None,
-            "selection_diff_category": None,
+            "selected_buckets": [],
             "selected_skills": [],
             "injection_mode": "none",
         }
@@ -173,39 +177,18 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
             "predicted_output": predicted_output,
             "actual_output": execution_output.content,
         }
-        classification = self.retrieval_classifier.classify(query_datapoint)
+        classification = self.retrieval_classifier.classify_multi_bucket(query_datapoint)
         base_event["classification"] = classification
         primary_board = classification["predicted_board"]
         base_event["policy_board"] = primary_board
-
-        selection_classification = None
-        selection_board = primary_board
-        selection_diff_category = classification["predicted_diff_category"]
-        should_retrieve_skill = classification["should_retrieve_skill"]
-
-        if self.skill_selection_mode == "category_full":
-            selection_classification = self.retrieval_classifier.classify_global_category(
-                query_datapoint
-            )
-            base_event["selection_classification"] = selection_classification
-            selection_board = None
-            selection_diff_category = selection_classification["predicted_diff_category"]
-            should_retrieve_skill = (
-                selection_classification["should_retrieve_skill"]
-                and primary_board in PRIMARY_BOARDS
-            )
-        else:
-            base_event["selection_classification"] = classification
-
-        base_event["selection_board"] = selection_board
-        base_event["selection_diff_category"] = selection_diff_category
-
-        if not should_retrieve_skill:
+        base_event["selection_classification"] = classification
+        selected_buckets = classification["selected_buckets"]
+        base_event["selected_buckets"] = selected_buckets
+        if not classification["should_retrieve_skill"]:
             return base_event
 
         selected_skills = self.select_skills(
-            primary_board=selection_board,
-            diff_category=selection_diff_category,
+            selected_buckets=selected_buckets,
             current_code=code,
             predicted_output=predicted_output,
             actual_output=execution_output.content,
@@ -219,74 +202,68 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
 
     def select_skills(
         self,
-        primary_board: str,
-        diff_category: str,
+        selected_buckets: list[dict[str, Any]],
         current_code: str,
         predicted_output: str,
         actual_output: str,
     ) -> list[dict[str, Any]]:
-        if self.skill_selection_mode == "full_skillbank":
-            return self.select_all_skills_from_skillbank()
-        if self.skill_selection_mode == "board_full":
-            return self.select_all_skills_from_board(primary_board)
-        if self.skill_selection_mode == "category_full":
-            return self.select_all_skills_from_category(diff_category)
-
-        bucket = get_bucket(self.skillbank, primary_board, diff_category)
-        if len(bucket) <= self.skill_max_per_injection:
-            return [self.format_selected_skill(skill, score=None) for skill in bucket]
+        candidate_entries = []
+        for selected_bucket in selected_buckets:
+            primary_board = selected_bucket["primary_board"]
+            diff_category = selected_bucket["diff_category"]
+            for skill in get_bucket(self.skillbank, primary_board, diff_category):
+                candidate_entries.append((skill, selected_bucket))
+        if not candidate_entries:
+            return []
 
         query_text = "\n\n".join([current_code, predicted_output, actual_output])
         skill_texts = [
             "\n".join([skill.get("content", ""), skill.get("note", "")])
-            for skill in bucket
+            for skill, _ in candidate_entries
         ]
         vectorizer = TfidfVectorizer(ngram_range=(1, 2), sublinear_tf=True)
         skill_matrix = vectorizer.fit_transform(skill_texts)
         query_vector = vectorizer.transform([query_text])
         scores = linear_kernel(query_vector, skill_matrix).ravel()
         ranked_indices = sorted(
-            range(len(bucket)),
-            key=lambda index: (-float(scores[index]), bucket[index].get("skill_id", "")),
+            range(len(candidate_entries)),
+            key=lambda index: (
+                -float(scores[index]),
+                -float(candidate_entries[index][1]["bucket_score"]),
+                candidate_entries[index][0].get("skill_id", ""),
+            ),
         )
         selected = []
-        for index in ranked_indices[: self.skill_max_per_injection]:
-            selected.append(self.format_selected_skill(bucket[index], score=float(scores[index])))
+        for index in ranked_indices:
+            skill, selected_bucket = candidate_entries[index]
+            selected.append(
+                self.format_selected_skill(
+                    skill,
+                    score=float(scores[index]),
+                    bucket_score=float(selected_bucket["bucket_score"]),
+                    board_score=float(selected_bucket["board_score"]),
+                    category_score=float(selected_bucket["category_score"]),
+                )
+            )
         return selected
 
-    def select_all_skills_from_skillbank(self) -> list[dict[str, Any]]:
-        selected = []
-        for primary_board in PRIMARY_BOARDS:
-            for diff_category in DIFF_CATEGORIES:
-                for skill in get_bucket(self.skillbank, primary_board, diff_category):
-                    selected.append(self.format_selected_skill(skill, score=None))
-        return selected
-
-    def select_all_skills_from_board(self, primary_board: str | None) -> list[dict[str, Any]]:
-        if primary_board not in PRIMARY_BOARDS:
-            return []
-        selected = []
-        for diff_category in DIFF_CATEGORIES:
-            for skill in get_bucket(self.skillbank, primary_board, diff_category):
-                selected.append(self.format_selected_skill(skill, score=None))
-        return selected
-
-    def select_all_skills_from_category(self, diff_category: str | None) -> list[dict[str, Any]]:
-        if diff_category not in DIFF_CATEGORIES:
-            return []
-        selected = []
-        for primary_board in PRIMARY_BOARDS:
-            for skill in get_bucket(self.skillbank, primary_board, diff_category):
-                selected.append(self.format_selected_skill(skill, score=None))
-        return selected
-
-    def format_selected_skill(self, skill: dict[str, Any], score: float | None) -> dict[str, Any]:
+    def format_selected_skill(
+        self,
+        skill: dict[str, Any],
+        score: float | None,
+        bucket_score: float | None = None,
+        board_score: float | None = None,
+        category_score: float | None = None,
+    ) -> dict[str, Any]:
         return {
             "skill_id": skill.get("skill_id", ""),
             "content": skill.get("content", ""),
             "note": skill.get("note", ""),
             "source": skill.get("source", {}),
             "selection_score": score,
+            "bucket_score": bucket_score,
+            "board_score": board_score,
+            "category_score": category_score,
         }
 
     def accept_execution_interaction(
@@ -320,20 +297,27 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
 
     def format_skill_guidance_history_entry(self, decision: dict[str, Any]) -> str:
         classification = decision.get("classification") or {}
-        selection_classification = decision.get("selection_classification") or {}
+        selected_buckets = decision.get("selected_buckets") or []
         selected_skills = decision.get("selected_skills") or []
         lines = [
             f"selection_mode: {decision.get('selection_mode') or '(none)'}",
             f"policy_board: {decision.get('policy_board') or '(none)'}",
             "classification:",
             f"board: {classification.get('predicted_board') or '(none)'}",
-            f"diff_category: {classification.get('predicted_diff_category') or '(none)'}",
-            "selection:",
-            f"board: {decision.get('selection_board') or '(all boards)'}",
-            f"diff_category: {decision.get('selection_diff_category') or '(none)'}",
-            f"confidence: {selection_classification.get('classification_confidence')}",
-            "skills:",
+            f"min_class_score: {classification.get('min_class_score')}",
+            "selected_buckets:",
         ]
+        if not selected_buckets:
+            lines.append("(No bucket selected)")
+        else:
+            for bucket in selected_buckets:
+                lines.append(
+                    "{primary_board}/{diff_category}: bucket={bucket_score} "
+                    "board={board_score} category={category_score}".format(**bucket)
+                )
+        lines.append(
+            "skills:",
+        )
         if not selected_skills:
             lines.append("(No skill retrieved)")
         else:
@@ -348,67 +332,16 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
 
     def build_skill_guidance_message(self, decision: dict[str, Any]) -> str:
         lines = [
-            "Retrieved Skill Guidance:",
-            "Use the following skill guidance for your next code block only.",
-            "Do not mention or quote this guidance in your response; just use it to choose the next action.",
-            "Verify API names, parameters, schemas, and values against actual API docs and environment outputs.",
+            "Here are some Skill Guidances for you,",
+            "you can take the useful part of them as an inspriation or referenc:.",
         ]
         lines.append("")
-        if self.skill_selection_mode == "full_skillbank":
-            lines.extend(self.build_full_skillbank_guidance_lines(decision["selected_skills"]))
-        elif self.skill_selection_mode == "board_full":
-            lines.extend(self.build_board_full_guidance_lines(decision["selected_skills"]))
-        elif self.skill_selection_mode == "category_full":
-            lines.extend(self.build_category_full_guidance_lines(decision["selected_skills"]))
-        else:
-            for skill in decision["selected_skills"]:
-                lines.append(f"[{skill['skill_id']}] {skill['content']}")
+        lines.extend(self.build_playbook_style_guidance_lines(decision["selected_skills"]))
         return "\n".join(lines).rstrip() + "\n\n"
 
-    def build_full_skillbank_guidance_lines(self, selected_skills: list[dict[str, Any]]) -> list[str]:
-        grouped_skills: dict[tuple[str, str], list[dict[str, Any]]] = {}
-        for skill in selected_skills:
-            source = skill.get("source", {})
-            primary_board = str(source.get("primary_board") or "unknown")
-            diff_category = str(source.get("diff_category") or "unknown")
-            grouped_skills.setdefault((primary_board, diff_category), []).append(skill)
-
-        lines: list[str] = []
-        for primary_board in PRIMARY_BOARDS:
-            board_lines = []
-            for diff_category in DIFF_CATEGORIES:
-                skills = grouped_skills.get((primary_board, diff_category), [])
-                if not skills:
-                    continue
-                board_lines.append(f"{primary_board} / {diff_category}:")
-                for skill in skills:
-                    board_lines.append(f"[{skill['skill_id']}] {skill['content']}")
-            if board_lines:
-                if lines:
-                    lines.append("")
-                lines.extend(board_lines)
-        return lines
-
-    def build_board_full_guidance_lines(self, selected_skills: list[dict[str, Any]]) -> list[str]:
-        grouped_skills: dict[str, list[dict[str, Any]]] = {}
-        for skill in selected_skills:
-            source = skill.get("source", {})
-            diff_category = str(source.get("diff_category") or "unknown")
-            grouped_skills.setdefault(diff_category, []).append(skill)
-
-        lines: list[str] = []
-        for diff_category in DIFF_CATEGORIES:
-            skills = grouped_skills.get(diff_category, [])
-            if not skills:
-                continue
-            if lines:
-                lines.append("")
-            lines.append(f"{diff_category}:")
-            for skill in skills:
-                lines.append(f"[{skill['skill_id']}] {skill['content']}")
-        return lines
-
-    def build_category_full_guidance_lines(self, selected_skills: list[dict[str, Any]]) -> list[str]:
+    def build_playbook_style_guidance_lines(
+        self, selected_skills: list[dict[str, Any]]
+    ) -> list[str]:
         grouped_skills: dict[str, list[dict[str, Any]]] = {}
         for skill in selected_skills:
             source = skill.get("source", {})
@@ -422,7 +355,7 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
                 continue
             if lines:
                 lines.append("")
-            lines.append(f"{primary_board}:")
+            lines.append(f"## {PRIMARY_BOARD_TITLES[primary_board]}")
             for skill in skills:
                 lines.append(f"[{skill['skill_id']}] {skill['content']}")
         return lines

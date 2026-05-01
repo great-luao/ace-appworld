@@ -73,6 +73,15 @@ class BaseAgent(FromDict):
             for _ in range(self.max_steps):
                 self.step_number += 1
                 execution_inputs, cost = self.next_execution_inputs_and_cost(execution_outputs)
+                execution_inputs = [
+                    execution_input
+                    for execution_input in execution_inputs
+                    if (execution_input.content or "").strip()
+                ]
+                if not execution_inputs:
+                    self.cost_tracker.add(task_id, cost)
+                    self.log_cost()
+                    break
                 execution_outputs = [
                     ExecutionIO(
                         content=world.execute(execution_input.content),
