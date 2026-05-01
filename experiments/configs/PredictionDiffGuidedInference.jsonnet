@@ -45,7 +45,6 @@ local generator_model_config = {
             "retrieval_min_class_score": 0.15,
             "skill_max_per_injection": 5,
             "skill_selection_mode": "bucket_topk",
-            "max_rollbacks_per_step": 1,
             "ignore_multiple_calls": true,
             "enable_output_prediction": true,
             "output_prediction_max_tokens": 5000,

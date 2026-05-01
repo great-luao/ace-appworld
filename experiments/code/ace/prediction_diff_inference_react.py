@@ -22,8 +22,6 @@ from appworld_experiments.code.ace.skillbank import (
 
 
 DEFAULT_RETRIEVAL_MIN_CLASS_SCORE = 0.15
-ROLLBACK_BOARDS = {"docs_lookup", "read_fetch"}
-POST_STATE_BOARDS = {"auth", "local_reasoning"}
 DEFAULT_SKILL_SELECTION_MODE = "bucket_topk"
 SKILL_SELECTION_MODES = {
     "bucket_topk",
@@ -45,8 +43,6 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
         retrieval_min_class_score: float | None = DEFAULT_RETRIEVAL_MIN_CLASS_SCORE,
         skill_max_per_injection: int = 5,
         skill_selection_mode: str = DEFAULT_SKILL_SELECTION_MODE,
-        enable_rollback: bool = True,
-        max_rollbacks_per_step: int = 1,
         **kwargs: Any,
     ):
         super().__init__(**kwargs)
@@ -58,8 +54,6 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
         self.retrieval_min_class_score = retrieval_min_class_score
         self.skill_max_per_injection = skill_max_per_injection
         self.skill_selection_mode = skill_selection_mode
-        self.enable_rollback = enable_rollback
-        self.max_rollbacks_per_step = max_rollbacks_per_step
         if self.skill_selection_mode not in SKILL_SELECTION_MODES:
             raise ValueError(
                 "skill_selection_mode must be one of: bucket_topk, full_skillbank, board_full, category_full."
@@ -73,26 +67,15 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
             min_class_score=retrieval_min_class_score,
         )
         self.skillbank = ensure_skillbank_shape(read_json(skillbank_file_path.replace("/", os.sep)))
-        self.guided_environment_io: list[dict[str, str]] = []
-        self.guided_predicted_environment_io: list[dict[str, str]] = []
-        self.comparison_environment_io: list[dict[str, str]] = []
-        self.comparison_predicted_environment_io: list[dict[str, str]] = []
         self.skill_guidance_history: list[dict[str, str]] = []
         self.pending_skill_guidance = ""
         self.latest_skill_guidance = ""
 
     def initialize(self, world: AppWorld):
         super().initialize(world)
-        self.guided_environment_io = []
-        self.guided_predicted_environment_io = []
-        self.comparison_environment_io = []
-        self.comparison_predicted_environment_io = []
         self.skill_guidance_history = []
         self.pending_skill_guidance = ""
         self.latest_skill_guidance = ""
-        if self.enable_rollback:
-            self._save_comparison_io_logs()
-            self._save_guided_environment_io_logs()
         self._save_skill_guidance_history_log()
 
     def next_execution_inputs_and_cost(
@@ -123,78 +106,39 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
             self.initialize(world)
             for _ in range(self.max_steps):
                 self.step_number += 1
-                rollback_count = 0
-                regenerate_current_step = True
+                execution_inputs, cost = self.next_execution_inputs_and_cost([])
+                if len(execution_inputs) != 1:
+                    raise ValueError("prediction_diff_inference_react expects one execution per step.")
 
-                while regenerate_current_step:
-                    regenerate_current_step = False
-                    checkpoint_id = ""
-                    namespace_snapshot: dict[str, Any] = {}
-                    if self.enable_rollback:
-                        checkpoint_id = world.save_state(
-                            f"pre_step_{self.step_number}_attempt_{rollback_count + 1}"
-                        )
-                        namespace_snapshot = self.snapshot_python_namespace(world)
-                    execution_inputs, cost = self.next_execution_inputs_and_cost([])
-                    if len(execution_inputs) != 1:
-                        raise ValueError("prediction_diff_inference_react expects one execution per step.")
+                execution_input = execution_inputs[0]
+                execution_output = ExecutionIO(
+                    content=world.execute(execution_input.content),
+                    metadata=execution_input.metadata,
+                )
+                predicted_output = execution_input.metadata.get("predicted_output", "")
+                self.record_predicted_environment_io(
+                    input_code=execution_input.content,
+                    predicted_output=predicted_output,
+                    actual_output=execution_output.content,
+                )
+                self._save_predicted_environment_io_log()
 
-                    execution_input = execution_inputs[0]
-                    execution_output = ExecutionIO(
-                        content=world.execute(execution_input.content),
-                        metadata=execution_input.metadata,
-                    )
-                    predicted_output = execution_input.metadata.get("predicted_output", "")
-                    self.record_predicted_environment_io(
-                        input_code=execution_input.content,
-                        predicted_output=predicted_output,
-                        actual_output=execution_output.content,
-                    )
-                    interaction_index = len(self.world.environment_io) - 1
+                self.cost_tracker.add(task_id, cost)
+                self.log_cost()
 
-                    self.cost_tracker.add(task_id, cost)
-                    self.log_cost()
+                decision = self.build_injection_decision(
+                    execution_input=execution_input,
+                    execution_output=execution_output,
+                )
+                self.record_skill_guidance_interaction(decision)
+                self.log_skill_injection_event(decision)
 
-                    decision = self.build_injection_decision(
-                        execution_input=execution_input,
-                        execution_output=execution_output,
-                        checkpoint_id=checkpoint_id,
-                        rollback_count=rollback_count,
-                    )
-                    if (
-                        decision["injection_mode"] == "rollback"
-                        and rollback_count >= self.max_rollbacks_per_step
-                    ):
-                        decision["rollback_skipped_reason"] = "max_rollbacks_per_step_reached"
-                        decision["injection_mode"] = "none"
-                    self.record_skill_guidance_interaction(decision)
-                    self.log_skill_injection_event(decision)
-
-                    if decision["injection_mode"] == "rollback":
-                        self.record_comparison_interaction(interaction_index)
-                        world.load_state(checkpoint_id)
-                        self.restore_python_namespace(world, namespace_snapshot)
-                        self.remove_last_assistant_message()
-                        self.append_skill_guidance_message(decision)
-                        rollback_count += 1
-                        regenerate_current_step = True
-                        if self.cost_tracker.exceeded():
-                            break
-                        continue
-
-                    self.accept_execution_interaction(
-                        execution_input=execution_input,
-                        execution_output=execution_output,
-                    )
-                    if self.enable_rollback:
-                        self.record_comparison_interaction(interaction_index)
-                    else:
-                        self._save_predicted_environment_io_log()
-                    if decision["injection_mode"] == "post_state":
-                        self.append_skill_guidance_message(decision)
-
-                    if world.task_completed() or self.cost_tracker.exceeded():
-                        break
+                self.accept_execution_interaction(
+                    execution_input=execution_input,
+                    execution_output=execution_output,
+                )
+                if decision["injection_mode"] == "post_injection":
+                    self.append_skill_guidance_message(decision)
 
                 if world.task_completed() or self.cost_tracker.exceeded():
                     break
@@ -204,15 +148,11 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
         self,
         execution_input: ExecutionIO,
         execution_output: ExecutionIO,
-        checkpoint_id: str,
-        rollback_count: int,
     ) -> dict[str, Any]:
         code = execution_input.content
         predicted_output = execution_input.metadata.get("predicted_output", "")
         base_event = {
             "step_number": self.step_number,
-            "checkpoint_id": checkpoint_id,
-            "rollback_count_before": rollback_count,
             "current_code": code,
             "predicted_output": predicted_output,
             "actual_output": execution_output.content,
@@ -223,7 +163,6 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
             "selection_board": None,
             "selection_diff_category": None,
             "selected_skills": [],
-            "default_injection_mode": "none",
             "injection_mode": "none",
         }
         if not code.strip() or self.is_complete_task_action(code):
@@ -275,12 +214,7 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
         if not selected_skills:
             return base_event
 
-        if primary_board in ROLLBACK_BOARDS:
-            base_event["default_injection_mode"] = "rollback"
-            base_event["injection_mode"] = "rollback" if self.enable_rollback else "post_state"
-        elif primary_board in POST_STATE_BOARDS:
-            base_event["default_injection_mode"] = "post_state"
-            base_event["injection_mode"] = "post_state"
+        base_event["injection_mode"] = "post_injection"
         return base_event
 
     def select_skills(
@@ -371,25 +305,6 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
                 "content": "Output:\n```\n" + execution_output.content + "```\n\n",
             }
         )
-        predicted_output = execution_input.metadata.get("predicted_output", "") or ""
-        if self.enable_rollback:
-            self.guided_environment_io.append(
-                {"input": execution_input.content, "output": execution_output.content.rstrip()}
-            )
-            self.guided_predicted_environment_io.append(
-                {"input": execution_input.content, "output": predicted_output.rstrip()}
-            )
-            self._save_guided_environment_io_logs()
-
-    def record_comparison_interaction(self, interaction_index: int) -> None:
-        expected_index = self.step_number - 1
-        if len(self.comparison_environment_io) != expected_index:
-            return
-        self.comparison_environment_io.append(self.world.environment_io[interaction_index])
-        self.comparison_predicted_environment_io.append(
-            self.predicted_environment_io[interaction_index]
-        )
-        self._save_comparison_io_logs()
 
     def record_skill_guidance_interaction(self, decision: dict[str, Any]) -> None:
         expected_index = self.step_number - 1
@@ -518,30 +433,6 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
         if self.messages[index].get("content") == self.latest_skill_guidance:
             self.messages.pop(index)
 
-    def remove_last_assistant_message(self) -> None:
-        for index in range(len(self.messages) - 1, -1, -1):
-            if self.messages[index]["role"] == "assistant":
-                self.messages.pop(index)
-                return
-        raise ValueError("No assistant message available to remove during rollback.")
-
-    def snapshot_python_namespace(self, world: AppWorld) -> dict[str, Any]:
-        if not hasattr(world, "shell"):
-            return {}
-        return dict(world.shell.user_ns)
-
-    def restore_python_namespace(self, world: AppWorld, snapshot: dict[str, Any]) -> None:
-        if not snapshot or not hasattr(world, "shell"):
-            return
-        protected_keys = {"apis", "requester"}
-        current_namespace = world.shell.user_ns
-        for key in list(current_namespace):
-            if key not in snapshot and key not in protected_keys:
-                current_namespace.pop(key, None)
-        for key, value in snapshot.items():
-            if key not in protected_keys:
-                current_namespace[key] = value
-
     def log_skill_injection_event(self, event: dict[str, Any]) -> None:
         self.append_jsonl("skill_injection_events.jsonl", event)
 
@@ -550,20 +441,6 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         with open(file_path, "a", encoding="utf-8") as file:
             file.write(json.dumps(payload, ensure_ascii=False) + "\n")
-
-    def _save_guided_environment_io_logs(self) -> None:
-        self._write_io_markdown("guided_environment_io.md", self.guided_environment_io)
-        self._write_io_markdown(
-            "guided_predicted_environment_io.md",
-            self.guided_predicted_environment_io,
-        )
-
-    def _save_comparison_io_logs(self) -> None:
-        self._write_io_markdown("environment_io.md", self.comparison_environment_io)
-        self._write_io_markdown(
-            "predicted_environment_io.md",
-            self.comparison_predicted_environment_io,
-        )
 
     def _save_skill_guidance_history_log(self) -> None:
         file_path = os.path.join(self.world.output_logs_directory, "active_skill_guidance.md")
