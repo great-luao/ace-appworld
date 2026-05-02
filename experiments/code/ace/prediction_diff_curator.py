@@ -23,8 +23,6 @@ from appworld_experiments.code.ace.skillbank import (
     get_bucket,
 )
 
-
-POST_SKILL_PRIMARY_BOARDS = {"auth", "local_reasoning"}
 UNSUPPORTED_PRIMARY_BOARDS = {"other"}
 SKIPPED_DIFF_CATEGORIES = {"", "match"}
 
@@ -206,11 +204,8 @@ class PredictionDiffCurator(FromDict):
                 )
                 continue
 
-            next_interaction = None
-            next_classification = None
-            if primary_board in POST_SKILL_PRIMARY_BOARDS:
-                next_interaction = interaction_lookup.get(interaction_index + 1)
-                next_classification = classification_lookup.get(interaction_index + 1)
+            next_interaction = interaction_lookup.get(interaction_index + 1)
+            next_classification = classification_lookup.get(interaction_index + 1)
 
             current_bucket = get_bucket(self.skillbank, primary_board, diff_category)
             prompt = self.render_curator_prompt(

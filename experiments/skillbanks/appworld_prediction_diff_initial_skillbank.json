@@ -1,34 +1,254 @@
 {
   "version": "v1",
-  "skill_id_counter": 1,
+  "skill_id_counter": 21,
   "buckets": {
     "docs_lookup": {
-      "safe_abstraction": [],
-      "schema_or_name_mismatch": [],
-      "missing_decisive_information": [],
-      "value_or_state_mismatch": [],
-      "wrong_action_or_failure_mode": []
+      "safe_abstraction": [                
+        {
+          "skill_id": "sk-00001",
+          "content": "During API doc lookup, verify and retain the complete success response schema (including extra fields and precise types/formats), not just the minimal fields needed to identify the endpoint.",
+          "note": "Safe abstraction in docs lookup can hide useful response details for downstream decisions.",
+          "source": {
+              "task_id": "template",
+              "primary_board": "docs_lookup",
+              "diff_category": "safe_abstraction"
+          }
+      }
+    ],
+      "schema_or_name_mismatch": [
+        {
+            "skill_id": "sk-00002",
+            "content": "When calling an API doc, design the call carefully to extract the most needed and useful information, avoiding over extraction of details that may not be relevant for the task at hand. Focus on key parameters, response fields, and usage examples that directly inform the agent's decision-making.",
+            "note": "Prevens context window waste and downstream mistakes from partial doc parsing in docs lookup.",
+            "source": {
+                "task_id": "template",
+                "primary_board": "docs_lookup",
+                "diff_category": "schema_or_name_mismatch"
+            }
+        }
+      ],
+      "missing_decisive_information": [
+        {
+            "skill_id": "sk-00003",
+            "content": "If you find yourself missing decisive information after an API doc lookup, consider revisiting current doc or its upper one with a more targeted query or using additional resources to fill in the gaps. But also avoid over extracting information that may not be relevant to the task at hand.",
+            "note": "Guide agents to re extract information after facing a decisive information gap in docs lookup, while avoiding over extraction of irrelevant details.",
+            "source": {
+                "task_id": "template",
+                "primary_board": "docs_lookup",
+                "diff_category": "missing_decisive_information"
+            }
+        }
+      ],
+      "value_or_state_mismatch": [
+        {
+            "skill_id": "sk-00004",
+            "content": "Even when two apps expose similarly named endpoints (like login), verify app-specific parameter semantics in the docs (e.g., email vs phone_number) before constructing request inputs.",
+            "note": "Avoid cross-app value assumptions during interface lookup.",
+            "source": {
+                "task_id": "template",
+                "primary_board": "docs_lookup",
+                "diff_category": "value_or_state_mismatch"
+            }
+        }
+      ],
+      "wrong_action_or_failure_mode": [
+        {
+            "skill_id": "sk-00005",
+            "content": "Do not assume a callable exists from its likely name. After a wrong action, it's better to first confirm the exact API names from the app's API list, and prefer separate or incremental doc lookups so one invalid name does not prevent collecting other docs.",
+            "note": "Docs lookup wrong-action pattern: guessed API names can cause lookup failure and block the rest of the inspection.",
+            "source": {
+                "task_id": "template",
+                "primary_board": "docs_lookup",
+                "diff_category": "wrong_action_or_failure_mode"
+            }
+        }
+      ]
     },
     "auth": {
-      "safe_abstraction": [],
-      "schema_or_name_mismatch": [],
-      "missing_decisive_information": [],
-      "value_or_state_mismatch": [],
-      "wrong_action_or_failure_mode": []
+      "safe_abstraction": [
+        {
+          "skill_id": "sk-00006",
+          "content": "When obtaining credentials or a login response, inspect the full returned structure and retain any account identifiers, token metadata, or session fields that may matter for the next authenticated call, not just a guessed password or a bare token string.",
+          "note": "Auth safe abstraction: the fuller credential or login payload can matter for the following step.",
+          "source": {
+            "task_id": "template",
+            "primary_board": "auth",
+            "diff_category": "safe_abstraction"
+          }
+        }
+      ],
+      "schema_or_name_mismatch": [
+        {
+          "skill_id": "sk-00007",
+          "content": "Before attempting login, verify the exact auth input schema from docs and map stored account data to those concrete parameter names and identifier types instead of guessing generic fields like username, email, or password.",
+          "note": "Push the next step to ground auth calls in the real login schema.",
+          "source": {
+            "task_id": "template",
+            "primary_board": "auth",
+            "diff_category": "schema_or_name_mismatch"
+          }
+        }
+      ],
+      "missing_decisive_information": [
+        {
+          "skill_id": "sk-00008",
+          "content": "If the available credential or profile information does not yet identify the exact account to use, fetch the missing identity detail first and only then attempt login, rather than retrying auth with partially matched credentials.",
+          "note": "Auth often fails because the decisive account identifier was never resolved.",
+          "source": {
+            "task_id": "template",
+            "primary_board": "auth",
+            "diff_category": "missing_decisive_information"
+          }
+        }
+      ],
+      "value_or_state_mismatch": [
+        {
+          "skill_id": "sk-00009",
+          "content": "After an auth-related call, reuse the exact returned access artifact fields and values as environment truth for later requests, rather than normalizing, renaming, or inventing token or session details.",
+          "note": "Later authenticated calls should be grounded in the exact returned auth state.",
+          "source": {
+            "task_id": "template",
+            "primary_board": "auth",
+            "diff_category": "value_or_state_mismatch"
+          }
+        }
+      ],
+      "wrong_action_or_failure_mode": [
+        {
+          "skill_id": "sk-00010",
+          "content": "When a login or access step fails, do not keep retrying variants blindly. Use the failure to check prerequisites such as the correct credential source, identifier type, and any required auth or setup step before the next action.",
+          "note": "Turn auth failure into prerequisite checking instead of repeated blind retries.",
+          "source": {
+            "task_id": "template",
+            "primary_board": "auth",
+            "diff_category": "wrong_action_or_failure_mode"
+          }
+        }
+      ]
     },
     "read_fetch": {
-      "safe_abstraction": [],
-      "schema_or_name_mismatch": [],
-      "missing_decisive_information": [],
-      "value_or_state_mismatch": [],
-      "wrong_action_or_failure_mode": []
+      "safe_abstraction": [
+        {
+          "skill_id": "sk-00011",
+          "content": "A successful read step may still be too shallow for the next decision. Inspect representative returned records, pagination metadata, and any omitted fields before treating the fetch as complete.",
+          "note": "Read/fetch safe abstraction: a shallow success can still hide decisive details.",
+          "source": {
+            "task_id": "template",
+            "primary_board": "read_fetch",
+            "diff_category": "safe_abstraction"
+          }
+        }
+      ],
+      "schema_or_name_mismatch": [
+        {
+          "skill_id": "sk-00012",
+          "content": "Use the actual response structure from the fetch result - real keys, nesting, and id formats - in downstream code instead of assuming common field names like items, results, id, or content.",
+          "note": "Push the agent to reason from the concrete fetch schema instead of guessed field names.",
+          "source": {
+            "task_id": "template",
+            "primary_board": "read_fetch",
+            "diff_category": "schema_or_name_mismatch"
+          }
+        }
+      ],
+      "missing_decisive_information": [
+        {
+          "skill_id": "sk-00013",
+          "content": "When the next step depends on selecting or comparing records, gather a broad enough result set first, including additional pages when needed, and then filter locally by the decisive criteria.",
+          "note": "Encourage broad retrieval before making a narrow downstream choice.",
+          "source": {
+            "task_id": "template",
+            "primary_board": "read_fetch",
+            "diff_category": "missing_decisive_information"
+          }
+        }
+      ],
+      "value_or_state_mismatch": [
+        {
+          "skill_id": "sk-00014",
+          "content": "Base downstream decisions on the values actually returned by the environment, including ids, statuses, timestamps, and counts, rather than on expected record state or guessed matches.",
+          "note": "Read/fetch decisions should be grounded in observed state, not expected state.",
+          "source": {
+            "task_id": "template",
+            "primary_board": "read_fetch",
+            "diff_category": "value_or_state_mismatch"
+          }
+        }
+      ],
+      "wrong_action_or_failure_mode": [
+        {
+          "skill_id": "sk-00015",
+          "content": "If a read returns empty, partial, or surprising results, broaden or verify the query first - such as filters, page index, or identifier assumptions - before switching to a write action or concluding the target data does not exist.",
+          "note": "Unexpected read results should trigger query checking before action changes.",
+          "source": {
+            "task_id": "template",
+            "primary_board": "read_fetch",
+            "diff_category": "wrong_action_or_failure_mode"
+          }
+        }
+      ]
     },
     "local_reasoning": {
-      "safe_abstraction": [],
-      "schema_or_name_mismatch": [],
-      "missing_decisive_information": [],
-      "value_or_state_mismatch": [],
-      "wrong_action_or_failure_mode": []
+      "safe_abstraction": [
+        {
+          "skill_id": "sk-00016",
+          "content": "Before acting on a locally derived summary, keep the decisive supporting details visible - such as which records matched, tie cases, or boundary values - when those details could change the next step.",
+          "note": "Local reasoning safe abstraction: concise summaries should still preserve decisive evidence.",
+          "source": {
+            "task_id": "template",
+            "primary_board": "local_reasoning",
+            "diff_category": "safe_abstraction"
+          }
+        }
+      ],
+      "schema_or_name_mismatch": [
+        {
+          "skill_id": "sk-00017",
+          "content": "When reasoning over previously fetched data, re-check the actual field names and value formats from the observation before writing code that joins, filters, or aggregates them.",
+          "note": "Prevent local logic from inheriting wrong schema assumptions.",
+          "source": {
+            "task_id": "template",
+            "primary_board": "local_reasoning",
+            "diff_category": "schema_or_name_mismatch"
+          }
+        }
+      ],
+      "missing_decisive_information": [
+        {
+          "skill_id": "sk-00018",
+          "content": "If a local decision depends on several conditions, inspect intermediate subsets or counts before finalizing the conclusion so the next action is grounded in enough evidence.",
+          "note": "Encourage intermediate checking when the final local conclusion may be under-supported.",
+          "source": {
+            "task_id": "template",
+            "primary_board": "local_reasoning",
+            "diff_category": "missing_decisive_information"
+          }
+        }
+      ],
+      "value_or_state_mismatch": [
+        {
+          "skill_id": "sk-00019",
+          "content": "When deriving counts, matches, or rankings from fetched data, verify that your normalization and comparison logic matches the real value formats and entity keys before using the result downstream.",
+          "note": "Derived results should be checked against the true value and key formats.",
+          "source": {
+            "task_id": "template",
+            "primary_board": "local_reasoning",
+            "diff_category": "value_or_state_mismatch"
+          }
+        }
+      ],
+      "wrong_action_or_failure_mode": [
+        {
+          "skill_id": "sk-00020",
+          "content": "If local reasoning produces an empty set, impossible count, or surprising winner, debug the assumption with a small intermediate print or sample check before taking the next environment action.",
+          "note": "Unexpected local results should trigger quick assumption checks before the next step.",
+          "source": {
+            "task_id": "template",
+            "primary_board": "local_reasoning",
+            "diff_category": "wrong_action_or_failure_mode"
+          }
+        }
+      ]
     }
   }
 }

@@ -54,8 +54,6 @@ Your curation target is:
 - `auth`: the step is mainly obtaining credentials, tokens, sessions, or access. Skills here should help the following step use access artifacts safely and verify login/access state.
 - `local_reasoning`: the step is mainly local computation over already available data. Skills here should help the following step avoid bad derived assumptions, wrong filtering, or incorrect aggregation.
 
-`other` is a non-curated board and should not be present in your input.
-
 ## Category-Aware Background
 
 The `diff_category` tells you what kind of prediction-observation gap the classifier saw.
@@ -135,30 +133,7 @@ Output:
   ]
 }}
 
-### Example 2: MODIFY
-
-Input summary:
-- The current interaction is a `docs_lookup` step.
-- The bucket already has a skill telling the agent to check docs before assuming parameter names.
-- The new interaction shows that the broader issue is response schema assumptions, not only parameter names.
-- The next interaction confirms that the bad assumption propagated into the following step.
-
-Output:
-{{
-  "reasoning": "The existing skill points in the right direction but is too narrow. A small revision would make it more useful for future environment interactions involving both request and response assumptions.",
-  "operations": [
-    {{
-      "type": "MODIFY",
-      "target_skill_id": "sk-00012",
-      "updated_skill": {{
-        "content": "Before relying on an API interface, verify both the callable inputs and the response structure from docs instead of assuming names or schema details.",
-        "note": "Broadened from parameter-only confusion to interface/schema confusion."
-      }}
-    }}
-  ]
-}}
-
-### Example 3: SKIP
+### Example 2: SKIP
 
 Input summary:
 - The current interaction is labeled `safe_abstraction`.
@@ -186,14 +161,15 @@ Return exactly:
         "note": "..."
       }}
     }},
+    "operations": [
     {{
-      "type": "MODIFY",
-      "target_skill_id": "sk-00012",
-      "updated_skill": {{
+      "type": "ADD",
+      "skill": {{
         "content": "...",
         "note": "..."
       }}
-    }}
+    }},
+    ...
   ]
 }}
 

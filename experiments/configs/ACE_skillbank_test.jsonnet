@@ -5,7 +5,7 @@ local experiment_configs_path = project_home_path + "/experiments/configs";
 local experiment_code_path = project_home_path + "/experiments/code";
 
 local generator_model_config = {
-    "name": "gpt-5.2",
+    "name": "gpt-5.3-codex",
     "provider": "OpenAI",
     "base_url": "https://api.zwlbnot.cn/v1",
     "temperature": 0,
@@ -37,16 +37,16 @@ local generator_model_config = {
                 "verbose": false,
             },
             "generator_prompt_file_path": experiment_prompts_path + "/appworld_react_generator_prompt.txt",
-            "trained_playbook_file_path": experiment_playbooks_path + "/appworld_skillbank_train_gpt5-2_playbook.txt",  
+            "trained_playbook_file_path": experiment_playbooks_path + "/appworld_skillbank_diff3_gpt3codex.txt",  
             "ignore_multiple_calls": true,
-            "max_prompt_length": 800000,
+            "max_prompt_length": 900000,
             "max_output_length": 400000,
             "max_steps": 40,
             "max_cost_overall": 1000,
             "max_cost_per_task": 10,
-            "log_lm_calls": false,
+            "log_lm_calls": true,
         },
-        "dataset": "test_normal_difficulty_3",
+        "dataset": "test_normal_difficulty_2_24",
         "skip_existing_outputs": true,
     }
 }
