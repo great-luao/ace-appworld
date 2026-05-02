@@ -1,0 +1,41 @@
+## DOCS LOOKUP
+[sk-00001] During API doc lookup, verify and retain the complete success response schema (including extra fields and precise types/formats), not just the minimal fields needed to identify the endpoint.
+[sk-00002] In docs lookup, treat returned documentation as the source of truth: copy exact API names and parse structured fields (e.g., name, parameters, response_schemas, including failure shape) before planning calls, rather than relying on remembered or guessed endpoint names/schema.
+[sk-00003] During API doc lookup, capture the exact callable contract before moving on: endpoint path, method, required/optional parameters, and the complete success/failure schema (including auxiliary auth fields like token_type), rather than relying on expected defaults.
+[sk-00028] When an expected API name is missing, re-run endpoint discovery and review the full API-name list (including pagination/truncation) before choosing a replacement, rather than acting on a partial remembered subset.
+[sk-00004] Even when two apps expose similarly named endpoints (like login), verify app-specific parameter semantics in the docs (e.g., email vs phone_number) before constructing request inputs.
+[sk-00025] When reading API docs, do not assume exact success message text, parameter names, or rich response objects from endpoint naming alone—copy request/response fields directly from the documented schema before planning calls.
+[sk-00005] Do not assume a callable exists from its likely name. After a wrong action, it's better to first confirm the exact API names from the app's API list, and prefer separate or incremental doc lookups so one invalid name does not prevent collecting other docs.
+[sk-00024] Match your expected output to the function type you are calling: doc-inspection APIs return interface metadata (parameters/schema), not business data results. Use docs calls to learn how to make the subsequent data call, then predict data from that runtime call instead.
+
+## AUTH
+[sk-00006] When obtaining credentials or a login response, inspect the full returned structure and retain any account identifiers, token metadata, or session fields that may matter for the next authenticated call, not just a guessed password or a bare token string.
+[sk-00007] Before attempting login, verify the exact auth input schema from docs and map stored account data to those concrete parameter names and identifier types instead of guessing generic fields like username, email, or password.
+[sk-00008] If the available credential or profile information does not yet identify the exact account to use, fetch the missing identity detail first and only then attempt login, rather than retrying auth with partially matched credentials.
+[sk-00021] When a credential-retrieval call succeeds, treat the returned username/password values as authoritative input for the next auth step; do not proceed with placeholders or an assumed subset of accounts.
+[sk-00009] After an auth-related call, reuse the exact returned access artifact fields and values as environment truth for later requests, rather than normalizing, renaming, or inventing token or session details.
+[sk-00026] When fetching stored credentials, treat the returned account-password mapping as the source of truth and extract the exact credential for the target app before attempting login.
+[sk-00010] When a login or access step fails, do not keep retrying variants blindly. Use the failure to check prerequisites such as the correct credential source, identifier type, and any required auth or setup step before the next action.
+
+## READ FETCH
+[sk-00011] A successful read step may still be too shallow for the next decision. Inspect representative returned records, pagination metadata, and any omitted fields before treating the fetch as complete.
+[sk-00012] Use the actual response structure from the fetch result - real keys, nesting, and id formats - in downstream code instead of assuming common field names like items, results, id, or content.
+[sk-00013] When the next step depends on selecting or comparing records, gather a broad enough result set first, including additional pages when needed, and then filter locally by the decisive criteria.
+[sk-00014] Base downstream decisions on the values actually returned by the environment, including ids, statuses, timestamps, and counts, rather than on expected record state or guessed matches.
+[sk-00023] When aggregating items from multiple libraries (e.g., direct library entries plus songs referenced by albums/playlists), deduplicate using a stable key built from returned fields and verify counts from the merged set rather than assuming expected overlap.
+[sk-00029] When a text search returns many candidate records, treat titles/snippets as preliminary and fetch detailed records for likely candidates before making downstream decisions.
+[sk-00031] When using transaction history to determine who has already paid, don’t rely on broad incoming-payment lists alone; filter to task-relevant counterparts (and date window when available) and confirm matches using returned sender identifiers plus amount/description before excluding someone from follow-up requests.
+[sk-00033] When aggregating values from detail endpoints, confirm the exact returned field names and units for the metric you need (e.g., duration fields) before summing; treat missing fields as a schema-check trigger, not as real zero values.
+[sk-00034] When file search returns multiple period-based matches, use the returned paths/labels to identify the task-relevant period (e.g., most recent month) before opening a file, instead of assuming a single expected receipt filename.
+[sk-00015] If a read returns empty, partial, or surprising results, broaden or verify the query first - such as filters, page index, or identifier assumptions - before switching to a write action or concluding the target data does not exist.
+
+## LOCAL REASONING
+[sk-00016] Before acting on a locally derived summary, keep the decisive supporting details visible - such as which records matched, tie cases, or boundary values - when those details could change the next step.
+[sk-00017] When reasoning over previously fetched data, re-check the actual field names and value formats from the observation before writing code that joins, filters, or aggregates them.
+[sk-00018] If a local decision depends on several conditions, inspect intermediate subsets or counts before finalizing the conclusion so the next action is grounded in enough evidence.
+[sk-00019] When deriving counts, matches, or rankings from fetched data, verify that your normalization and comparison logic matches the real value formats and entity keys before using the result downstream.
+[sk-00027] For time-window calculations, derive boundaries from the runtime environment’s current date/time and treat that computed value as the source of truth rather than assuming real-world today.
+[sk-00030] When inferring status from past transactions, constrain matches to the relevant event context (e.g., note/date/description window) and verify both identity and expected amount before marking someone as already settled.
+[sk-00032] When aggregating fetched numeric fields (e.g., durations, totals, counts), avoid assuming plausible final numbers; compute from the returned records and treat those computed aggregates as the source of truth for downstream choices.
+[sk-00020] If local reasoning produces an empty set, impossible count, or surprising winner, debug the assumption with a small intermediate print or sample check before taking the next environment action.
+[sk-00022] When doing local data transformation, do not assume all Python modules/functions are permitted; if an import or function is blocked, switch to a simpler allowed string/list-based construction instead of retrying restricted utilities.

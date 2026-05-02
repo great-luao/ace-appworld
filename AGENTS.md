@@ -18,6 +18,7 @@
 - 运行实验: `appworld run <CONFIG_NAME>`
 - 评测结果: `appworld evaluate <CONFIG_NAME> <DATASET_NAME>`
 - 单任务调试: `appworld run <CONFIG_NAME> --task-id <TASK_ID>`
+- 调试时Override config: --override '{"config": {"dataset": "train_difficulty_3"}}'
 
 ## Project Structure
 

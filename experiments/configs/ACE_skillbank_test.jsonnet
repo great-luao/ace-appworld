@@ -37,7 +37,7 @@ local generator_model_config = {
                 "verbose": false,
             },
             "generator_prompt_file_path": experiment_prompts_path + "/appworld_react_generator_prompt.txt",
-            "trained_playbook_file_path": experiment_playbooks_path + "/appworld_skillbank_diff3_gpt3codex.txt",  
+            "trained_playbook_file_path": experiment_playbooks_path + "/appworld_skillbank_diff3_gpt3codex_playbook.txt",  
             "ignore_multiple_calls": true,
             "max_prompt_length": 900000,
             "max_output_length": 400000,
@@ -46,7 +46,7 @@ local generator_model_config = {
             "max_cost_per_task": 10,
             "log_lm_calls": true,
         },
-        "dataset": "test_normal_difficulty_2_24",
+        "dataset": "test_normal_difficulty_2",
         "skip_existing_outputs": true,
     }
 }
