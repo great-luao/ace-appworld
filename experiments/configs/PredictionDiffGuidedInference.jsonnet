@@ -53,8 +53,10 @@ local generator_model_config = {
             "max_cost_overall": 1000,
             "max_cost_per_task": 10,
             "log_lm_calls": true,
+            "max_prompt_length": 800000,
+            "max_output_length": 400000,
         },
-        "dataset": "test_normal_difficulty_3_random15",
+        "dataset": "test_normal_difficulty_3",
         "skip_existing_outputs": true,
     }
 }

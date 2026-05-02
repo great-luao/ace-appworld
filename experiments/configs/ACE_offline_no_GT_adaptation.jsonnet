@@ -80,6 +80,8 @@ local curator_model_config = {
             "initial_playbook_file_path": experiment_playbooks_path + "/appworld_initial_playbook.txt", 
             "trained_playbook_file_path": experiment_playbooks_path + "/appworld_offline_trained_no_gt_playbook_diff3.txt",  
             "ignore_multiple_calls": true,
+            "max_prompt_length": 800000,
+            "max_output_length": 400000,
             "max_steps": 40,
             "max_cost_overall": 1000,
             "max_cost_per_task": 10,

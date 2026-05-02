@@ -48,6 +48,8 @@ local retrieval_model_config = generator_model_config;
             "prefix_max_skills": 20,
             "trajectory_skill_window_rounds": 3,
             "ignore_multiple_calls": true,
+            "max_prompt_length": 800000,
+            "max_output_length": 400000,
             "max_steps": 40,
             "max_cost_overall": 1000,
             "max_cost_per_task": 10,

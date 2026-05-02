@@ -38,6 +38,8 @@ local generator_model_config = {
             "generator_prompt_file_path": experiment_prompts_path + "/appworld_react_generator_prompt.txt",
             "trained_playbook_file_path": experiment_playbooks_path + "/appworld_offline_trained_with_gt_playbook.txt",  
             "ignore_multiple_calls": true,
+            "max_prompt_length": 800000,
+            "max_output_length": 400000,
             "max_steps": 40,
             "max_cost_overall": 1000,
             "max_cost_per_task": 10,

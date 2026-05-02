@@ -36,6 +36,8 @@ local generator_model_config = {
             },
             "generator_prompt_file_path": experiment_prompts_path + "/react.txt",
             "ignore_multiple_calls": true,
+            "max_prompt_length": 800000,
+            "max_output_length": 400000,
             "enable_output_prediction": true,
             "output_prediction_max_tokens": 5000,
             "output_prediction_stop_tokens": ["```"],
