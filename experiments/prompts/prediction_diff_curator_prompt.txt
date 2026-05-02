@@ -10,8 +10,8 @@ Each skill should help a future agent:
 - inspect the right docs or schema before acting
 - gather the right information from the environment
 - avoid relying on shallow or misleading environment feedback
-- verify important assumptions before using the returned observation
 - choose actions that make the real environment feedback closer to what a well-grounded agent should reasonably expect
+- avoid gathering too much irrelevant information that may distract from the real interaction problem and cause the context explosion problem
 
 In other words, the purpose of a skill is to improve how the agent interacts with the environment so that future prediction-observation gaps become smaller and more informative.
 
@@ -47,10 +47,6 @@ This background is only to help you understand how the skill may later be used.
 - `read_fetch`: the step is mainly retrieving task-relevant records or objects. Skills here should help the agent gather enough data and interpret returned content correctly.
 - `auth`: the step is mainly obtaining credentials, tokens, sessions, or access. Skills here should help the following step use access artifacts safely and verify login/access state.
 - `local_reasoning`: the step is mainly local computation over already available data. Skills here should help the following step avoid bad derived assumptions, wrong filtering, or incorrect aggregation.
-
-Use setting:
-- Skills from `docs_lookup` and `read_fetch` are usually used to refine the current step.
-- Skills from `auth` and `local_reasoning` are usually used after the current step to guide the next action.
 
 `other` is a non-curated board and should not be present in your input.
 

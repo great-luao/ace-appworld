@@ -32,6 +32,10 @@ def filter_predicted_entries_for_classification(
     for predicted_entry in predicted_entries:
         current_code = predicted_entry.get("input") or ""
         current_predicted_output = predicted_entry.get("output") or ""
+        # Older runs can accumulate empty predicted entries after the model stops
+        # producing executable code. They should not be treated as interactions.
+        if not current_code.strip():
+            continue
         if not current_predicted_output.strip() and is_complete_task_action(current_code):
             continue
         filtered_entries.append(predicted_entry)

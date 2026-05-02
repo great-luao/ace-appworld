@@ -1,0 +1,2074 @@
+{
+    "version": "v1",
+    "skill_id_counter": 203,
+    "buckets": {
+        "docs_lookup": {
+            "safe_abstraction": [
+                {
+                    "skill_id": "sk-00002",
+                    "content": "When inspecting an auth/login API, record not just parameter names but also the endpoint path+HTTP method and the full response schemas (success and failure). Use the documented success fields (e.g., token type) when forming the Authorization header, and handle the documented failure message instead of assuming a token is always returned.",
+                    "note": "Safe abstractions in docs can still break the next step for auth flows if method/path or failure/extra response fields are ignored.",
+                    "source": {
+                        "task_id": "82e2fac_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "safe_abstraction"
+                    }
+                },
+                {
+                    "skill_id": "sk-00016",
+                    "content": "During docs lookup for a listing/library endpoint, explicitly verify (1) whether the response schema contains the metric you need (e.g., play_count/streams) and (2) what pagination controls/limits exist. If the needed metric isn\u2019t present, plan an alternate route (other endpoint or per-item detail calls) instead of assuming it can be derived from the list response.",
+                    "note": "Safe abstractions can hide that required ranking signals are absent; schema + pagination details determine what to fetch next.",
+                    "source": {
+                        "task_id": "82e2fac_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "safe_abstraction"
+                    }
+                },
+                {
+                    "skill_id": "sk-00047",
+                    "content": "When reading an API\u2019s response schema, don\u2019t assume extra convenience fields (e.g., combined/derived strings like \"date_time\") exist. Only use documented keys; if you need a derived value, plan to compute it locally from the returned primitives (e.g., concatenate date + time) after verifying the exact field names in the schema.",
+                    "note": "Safe abstractions during docs lookup can lead to downstream KeyError/field-mismatch bugs if the agent invents undocumented response fields.",
+                    "source": {
+                        "task_id": "2a163ab_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "safe_abstraction"
+                    }
+                },
+                {
+                    "skill_id": "sk-00051",
+                    "content": "When looking up an API you plan to call next, record the concrete invocation metadata (HTTP method + path) and both success and failure response schemas, not just the success fields. Use the documented failure shape (e.g., message) to branch/diagnose instead of assuming the call always succeeds.",
+                    "note": "Safe abstractions during docs lookup can hide call mechanics and error modes; capturing method/path + failure schema prevents wrong-call and unhandled-error surprises.",
+                    "source": {
+                        "task_id": "2a163ab_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "safe_abstraction"
+                    }
+                },
+                {
+                    "skill_id": "sk-00091",
+                    "content": "When inspecting a library/list endpoint you plan to iterate over, capture the pagination contract completely (page_index + page_limit defaults and constraints) and scan the response schema for which fields are actually returned (often just IDs plus a few summary fields). Use this to plan the pagination loop size and whether you must call per-item detail endpoints to get missing attributes (e.g., release date) instead of assuming the list response is complete.",
+                    "note": "Safe abstractions in docs lookup can hide default page sizes/limits and the fact that list responses may not include the decisive fields, leading to under-fetching or wrong downstream assumptions.",
+                    "source": {
+                        "task_id": "27e1026_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "safe_abstraction"
+                    }
+                },
+                {
+                    "skill_id": "sk-00163",
+                    "content": "When inspecting a search endpoint you\u2019ll use for thresholding/ranking, explicitly capture (1) server-side filter parameters for the decisive metric (e.g., min/max follower count), (2) sorting semantics (what fields are sortable and whether sorting happens before/after relevance + pagination), and (3) pagination defaults and max page_limit. Use these to prefer API-side filtering/sorting over client-side post-processing and to size the pagination loop correctly.",
+                    "note": "Safe abstractions of search docs can hide built-in filters, sort order nuances, and small default page sizes, leading to unnecessary calls or wrong assumptions about result ordering/completeness.",
+                    "source": {
+                        "task_id": "07b42fd_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "safe_abstraction"
+                    }
+                }
+            ],
+            "schema_or_name_mismatch": [
+                {
+                    "skill_id": "sk-00007",
+                    "content": "When you need fields from an endpoint, read the endpoint\u2019s documented response schema and mirror its exact field names and structure in your parsing (don\u2019t assume nested objects or canonical names like duration_s/avg_rating/artist_id). If your downstream code expects a different shape, add an explicit mapping layer from the actual schema to your internal representation.",
+                    "note": "Prevents schema/name mismatch by grounding data extraction and transformations in the concrete response schema, not a guessed/typical one.",
+                    "source": {
+                        "task_id": "82e2fac_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00009",
+                    "content": "When using an API catalog/listing method (e.g., show_api_descriptions), don\u2019t assume it returns human-readable strings or a small fixed set of endpoints. Inspect the actual returned structure (e.g., list of {name, description}) and drive all subsequent calls from the exact returned endpoint names; if you need details, query per-endpoint docs using those names rather than inventing endpoints from memory.",
+                    "note": "Prevents schema/name mismatch by grounding both the set of available endpoints and the catalog response shape in the observed docs output.",
+                    "source": {
+                        "task_id": "82e2fac_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00011",
+                    "content": "Don\u2019t infer REST paths from the app name or endpoint name (e.g., prefixing with /app/...); when an endpoint is selected, always read and use its documented HTTP method and exact path as the source of truth for request construction and for any reasoning about where the call routes.",
+                    "note": "Prevents schema/name mismatch where the callable name is right but the assumed URL path/method is wrong.",
+                    "source": {
+                        "task_id": "82e2fac_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00018",
+                    "content": "For auth/login endpoints, don\u2019t assume conventional credential field names (e.g., email). Read the docs for the exact path/method and parameter names (often username even if it represents email), and capture the full response contract: all success fields (e.g., token_type alongside access_token) plus the documented failure schema (e.g., message) so later steps can format auth headers correctly and branch on login errors.",
+                    "note": "Strengthens the auth-docs habit by explicitly verifying credential parameter names and recording failure schemas for robust downstream behavior.",
+                    "source": {
+                        "task_id": "82e2fac_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00020",
+                    "content": "When pulling credentials/secrets from a supervisor-style endpoint, don\u2019t assume a full {username,password} pair will be returned. Read the success schema to see exactly which fields exist (often only account_name + password), and also check for a documented failure schema so your next steps can branch (e.g., prompt for missing username, or handle missing/unavailable credentials) instead of crashing on absent fields.",
+                    "note": "Prevents schema/name mismatch by avoiding default assumptions about credential field presence and by explicitly handling documented failure responses.",
+                    "source": {
+                        "task_id": "692c77d_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00021",
+                    "content": "When inspecting an endpoint\u2019s docs, record the full callable contract\u2014not just the endpoint name: verify the exact path/method plus all parameters (including optional filters like is_public) and pagination controls (page_index/page_limit, defaults, and constraints). Use those documented defaults/limits to drive subsequent listing loops instead of assuming standard routes or page sizes.",
+                    "note": "Prevents schema/name mismatch where agents guess REST paths and overlook optional filter/pagination parameters and constraints that affect how to correctly enumerate and filter resources.",
+                    "source": {
+                        "task_id": "692c77d_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00022",
+                    "content": "When reading docs for list/library endpoints, explicitly check for optional sort/order parameters (e.g., sort_by with +/- prefixes) and record their defaults; then use the documented page_limit defaults and max constraints to drive your pagination loop and expected ordering instead of assuming typical page sizes or implicit recency order.",
+                    "note": "Prevents schema/name mismatch and downstream enumeration bugs caused by overlooking sort parameters and guessing pagination defaults/limits.",
+                    "source": {
+                        "task_id": "692c77d_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00024",
+                    "content": "When an API mentions a sub-entity like a \u201creview,\u201d don\u2019t assume it\u2019s fetched via the parent entity\u2019s id (e.g., song_id) or nested under /songs/...; check the docs to see whether it\u2019s a first-class resource with its own identifier (e.g., review_id) and separate path (e.g., /song_reviews/{review_id}). Use that to decide whether you must first list/search reviews to obtain ids, and don\u2019t assume access_token is required unless the parameters explicitly include it.",
+                    "note": "Prevents schema/name mismatch where agents confuse parent-id vs sub-resource-id addressing and incorrectly assume nesting or auth requirements for \u201cshow\u201d endpoints.",
+                    "source": {
+                        "task_id": "692c77d_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00025",
+                    "content": "For create/update (POST/PUT) endpoints, don\u2019t assume a canonical collection path (e.g., /reviews) or that the response returns the full created object. Read the docs to confirm (a) whether the path is nested under a parent resource (e.g., /items/{id}/reviews), (b) exact parameter types (integer vs number) and optional defaults (null vs empty string), and (c) whether success returns only {message, id} vs a full record\u2014then design follow-up fetches accordingly.",
+                    "note": "Prevents schema/name mismatch where agents guess write-endpoint paths, parameter typing/defaults, or overestimate success response richness, which can break request construction and downstream parsing.",
+                    "source": {
+                        "task_id": "692c77d_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00026",
+                    "content": "For update/mutation endpoints, don\u2019t assume the HTTP verb (PUT vs PATCH) or that auth is optional: read the docs and copy the exact method plus the full required-parameter list (especially access_token) into your request plan before implementing the update logic.",
+                    "note": "Prevents schema/name mismatch where update calls fail due to using the wrong HTTP method or omitting required auth parameters on write operations.",
+                    "source": {
+                        "task_id": "692c77d_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00028",
+                    "content": "When you need to traverse parent\u2192child relationships from any endpoint (list/library or detail), don\u2019t assume children are embedded as full objects (e.g., songs: [{...}]) or, conversely, only provided as id arrays (e.g., song_ids). Check the documented response schema for the exact representation and field names, then design parsing accordingly: if only *_ids are provided, plan follow-up calls (or separate library endpoints) to fetch child details; if objects are embedded, extract directly without extra fetches.",
+                    "note": "Prevents schema_or_name_mismatch where agents guess whether relationships are embedded vs referenced-by-id, leading to incorrect parsing and missing follow-up fetch plans.",
+                    "source": {
+                        "task_id": "692c77d_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00032",
+                    "content": "For \u201clist/get reviews (or other sub-resources)\u201d endpoints, don\u2019t assume a flat collection path like /reviews or /song_reviews. In the docs, confirm whether the list route is nested under the parent resource (e.g., /songs/{id}/reviews) and copy the full parameter set\u2014including optional filters/search (query, user filter, min/max ranges) and sort controls\u2014so your later fetch logic doesn\u2019t miss supported narrowing options or call the wrong route.",
+                    "note": "Prevents schema/name mismatch by verifying nested resource paths and capturing non-obvious optional filter/sort parameters on list endpoints instead of guessing a generic collection route.",
+                    "source": {
+                        "task_id": "692c77d_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00036",
+                    "content": "For rating/review (write) endpoints, don\u2019t assume common conventions (e.g., float 0\u20135, optional rating, or a full review object returned). In the docs, explicitly verify: (a) rating type (int vs number) and allowed range (often 1\u20135), (b) whether rating is required, (c) defaults for optional title/text (null vs empty string), and (d) whether success returns only an {id/message} stub\u2014if so, plan an explicit follow-up GET using the returned id to obtain the full record if needed.",
+                    "note": "Prevents schema/name mismatch on review mutations by grounding request validation (requiredness/type/range) and downstream expectations (stub vs full response) in the documented contract.",
+                    "source": {
+                        "task_id": "692c77d_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00042",
+                    "content": "For supervisor task-finalization endpoints (e.g., complete_task), don\u2019t assume the route/path or a generic answer payload type. Always read the docs to confirm (a) the exact path/method, (b) whether there is a separate 'status' parameter (and allowed values like success/fail), and (c) constraints on 'answer' (often only concise scalar types). If the task instruction isn\u2019t asking a question, plan to leave 'answer' as the default (None) rather than sending a free-form object.",
+                    "note": "Prevents schema/name mismatch and bad completion calls by grounding task-completion request construction (path, status, and answer typing/when-to-send) in the documented contract.",
+                    "source": {
+                        "task_id": "692c77d_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00044",
+                    "content": "For feed/timeline/list endpoints, don\u2019t assume a generic path (e.g., /me/...) or a flattened \u201ctransaction\u201d record. In the docs, verify (a) the exact path, (b) all pagination controls (including page_limit defaults and max constraints), and (c) whether each item uses nested objects (e.g., sender/receiver) and what the actual field names are (amount/description/private/etc.) before writing filters or mappers.",
+                    "note": "Prevents schema_or_name_mismatch by grounding both pagination behavior and per-item (often nested) response structure in the documented contract instead of common social-feed conventions.",
+                    "source": {
+                        "task_id": "2a163ab_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00046",
+                    "content": "For \u201csearch\u201d endpoints, don\u2019t assume there is a dedicated /resource/search route or that query is required. In the docs, verify whether search is implemented as the base collection GET (e.g., /resources) with optional query plus additional supported filters (e.g., tags, pinned), pagination controls (page_index/page_limit with defaults and max constraints), and sort parameters (including any +/- prefix semantics and default ordering). Also confirm key field types in results (e.g., id int vs string) and plan a small mapping/casting layer if your downstream code expects different types or field names.",
+                    "note": "Prevents schema_or_name_mismatch by grounding route, optionality, filters, pagination/sort behavior, and result typing in the documented contract instead of conventional /search assumptions.",
+                    "source": {
+                        "task_id": "2a163ab_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00050",
+                    "content": "After calling an API catalog/listing function, treat it as the authoritative source of available endpoint names: parse its actual schema (often list of {name, description}), then identify candidate endpoints by scanning descriptions/keywords and follow up by opening the docs for those exact names (rather than assuming a remembered endpoint like show_*_feed exists).",
+                    "note": "Prevents schema/name mismatch where agents invent endpoint names based on prior expectations instead of driving selection from the returned catalog structure and per-endpoint docs.",
+                    "source": {
+                        "task_id": "2a163ab_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00057",
+                    "content": "Don\u2019t assume an endpoint requires auth just because other endpoints in the same app do. For each callable you plan to use (even simple GET \u201cshow_*\u201d endpoints), confirm auth requirements by checking whether access_token (or similar) is explicitly listed in the documented parameters; only include/pass tokens when the docs require them.",
+                    "note": "Prevents schema/name mismatches where agents mistakenly add access_token (or omit it) based on convention rather than the endpoint\u2019s documented parameter list.",
+                    "source": {
+                        "task_id": "6104387_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00059",
+                    "content": "For file-system write endpoints (create_directory/create_file/update_file/delete_*), don\u2019t assume they\u2019re unauthenticated or that success returns the created object/path. In the docs, explicitly verify whether an access_token is required, the defaults for flags like recursive, and whether the success schema is only a {message} stub\u2014then plan separate existence/check/read calls if you need to confirm the result.",
+                    "note": "Prevents schema_or_name_mismatch when moving from doc inspection to implementing file operations by grounding auth requirements, flag defaults, and success payload expectations in the documented contract.",
+                    "source": {
+                        "task_id": "6104387_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00060",
+                    "content": "When preparing to write a file via a create_file-like endpoint, verify in the docs (a) whether content is optional and its default (e.g., empty string), (b) whether an overwrite flag exists and its default (often false), and (c) what the success payload includes (e.g., returned file_path). Use these specifics to decide whether you must pass content explicitly, whether you need to set overwrite=True, and how to confirm the created/target path.",
+                    "note": "Prevents schema/name mismatches and incorrect write behavior caused by assuming content is required, overlooking overwrite guards, or expecting only a {message} success stub.",
+                    "source": {
+                        "task_id": "6104387_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00064",
+                    "content": "When a file-system operation fails due to a missing endpoint (e.g., write_file), immediately consult the app\u2019s API descriptions and map your intent to the actual verb set used by that app (commonly create_file vs update_file, and show_file/show_directory vs read_file/list_directory). If the returned catalog looks unrelated or includes unexpected endpoints, double-check you queried the correct app_name and rerun the catalog lookup before proceeding.",
+                    "note": "Prevents schema/name mismatch loops on file operations by grounding file read/write/list actions in the exact endpoint names exposed by the environment and catching wrong-app lookups early.",
+                    "source": {
+                        "task_id": "6104387_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00066",
+                    "content": "When switching to platform file_system APIs for writing files, don\u2019t assume local-IO conventions: open the create_file/update_file docs and copy the exact parameter names and requiredness (e.g., file_path vs path, whether access_token is required, and whether content is optional with a default). Also mirror the documented success fields (often {message, file_path}) rather than expecting bytes_written/path.",
+                    "note": "Prevents schema_or_name_mismatch when constructing file write calls by grounding both auth + parameter naming and response expectations in the file_system docs.",
+                    "source": {
+                        "task_id": "6104387_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00067",
+                    "content": "For create/mutation endpoints (e.g., create_directory), don\u2019t assume the success response echoes identifying fields like the created path/id. Check the documented success schema; if it\u2019s only a {message} stub, plan an explicit verification step (e.g., directory_exists/show_directory/show_file) rather than wiring downstream logic to non-existent return fields.",
+                    "note": "Prevents schema_or_name_mismatch where agents overestimate mutation response payloads and then break parsing or skip needed verification reads.",
+                    "source": {
+                        "task_id": "6104387_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00073",
+                    "content": "For send/create endpoints (e.g., send_text_message), don\u2019t assume a generic collection route or a standard success field like status. In the docs, verify whether the path is templated (e.g., includes /{phone_number}) and mirror that contract in your call plan; also copy the exact success schema fields (often {message, *_id}) so downstream code doesn\u2019t look for non-existent keys.",
+                    "note": "Prevents schema/name mismatch where agents guess POST routes and success payload conventions instead of using the documented templated path and actual response fields.",
+                    "source": {
+                        "task_id": "29caf6f_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00074",
+                    "content": "In messaging/communications apps, don\u2019t assume a single generic endpoint like show_messages exists. After listing available callables, identify whether the domain is split into separate resources (e.g., text vs voice) and separate access patterns (search_* vs show_*_window vs show_* detail). Choose endpoints by their documented names/descriptions (window around time vs full detail by id) rather than guessing a consolidated API.",
+                    "note": "Prevents schema/name mismatch where agents invent canonical messaging endpoints and miss the app\u2019s actual split between search/window/detail and text/voice resources.",
+                    "source": {
+                        "task_id": "29caf6f_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00077",
+                    "content": "For \u201csend message/notification\u201d endpoints, don\u2019t assume a generic collection route (e.g., POST /messages) or that the recipient is always a body parameter. In the docs, explicitly check whether the recipient identifier is a required path parameter (e.g., /messages/text/{phone_number}) vs a JSON/body field, and mirror the documented success payload (often just {message, id}) instead of expecting delivery status/timestamps.",
+                    "note": "Prevents schema_or_name_mismatch by verifying parameterized paths and minimal success schemas on messaging endpoints before implementing request construction or response handling.",
+                    "source": {
+                        "task_id": "29caf6f_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00078",
+                    "content": "For list endpoints where you need a time-bounded subset (e.g., \u201clast N days\u201d), don\u2019t invent filter names like transaction_type/date_from. Open the endpoint docs and copy the exact supported filter parameters (often min_*/max_* ranges like min_created_at/max_created_at, amount/like_count bounds, query, user_email) plus their required formats (e.g., YYYY-MM-DD), defaults, and allowed values; then base your fetch plan on those exact filters and constraints.",
+                    "note": "Prevents schema/name mismatch by grounding time-window and other narrowing logic in the endpoint\u2019s documented filter names, formats, defaults, and constraints instead of assuming conventional parameters.",
+                    "source": {
+                        "task_id": "afc0fce_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00081",
+                    "content": "For comment/like (mutation) endpoints, don\u2019t assume canonical body field names (e.g., content/text) or a full created-object response. Open the endpoint docs and copy the exact parameter names (e.g., comment vs content) and the actual success schema (often just {message, id}); if you need full details (timestamps/author/transaction linkage), plan an explicit follow-up GET using the returned id or transaction id.",
+                    "note": "Prevents schema/name mismatches on write endpoints and avoids downstream parsing/logic that depends on invented rich response objects.",
+                    "source": {
+                        "task_id": "afc0fce_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00082",
+                    "content": "For action/subresource endpoints (likes, reactions, comments), don\u2019t infer the REST path from the endpoint name (e.g., guessing /like vs /likes). Always open the endpoint\u2019s docs and copy the exact documented path string (including pluralization) and method into your plan/debugging notes before implementing or troubleshooting the call.",
+                    "note": "Prevents schema/name mismatches caused by singular-vs-plural path assumptions on mutation/subresource routes.",
+                    "source": {
+                        "task_id": "afc0fce_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00083",
+                    "content": "For list/timeline endpoints, don\u2019t guess a minimal filter set (e.g., type=pay/charge) or plan to fetch everything and filter locally. In the endpoint docs, enumerate the available server-side filters (date min/max, direction, privacy, amount/like_count ranges, query/user filters), their formats (e.g., YYYY-MM-DD), and pagination limits (page_limit max). Use these documented filters to narrow results at the API call and design pagination loops around the documented defaults/constraints.",
+                    "note": "Prevents schema_or_name_mismatch by grounding both filtering strategy and pagination behavior in the actual documented parameter list for list endpoints.",
+                    "source": {
+                        "task_id": "afc0fce_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00084",
+                    "content": "For reaction-style endpoints (like/likes, comment/comments, follow/follows), don\u2019t infer the subresource path suffix from the callable name. In docs, verify the exact path string (especially singular vs plural segments) and then use that exact documented route as the source of truth for any request planning or reasoning about how to call the endpoint.",
+                    "note": "Prevents schema_or_name_mismatch where agents assume conventional singular (/like) routes but the API uses plural subresource collections (/likes) or other small path variations.",
+                    "source": {
+                        "task_id": "afc0fce_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00085",
+                    "content": "When reading API docs, don\u2019t assume response_schemas will be type-annotated (e.g., {id: \"integer\"}); some docs show example literal values instead (e.g., {id: 1}). Treat the rendered schema as authoritative: infer expected keys from it, but confirm types by either (a) checking whether values are type strings vs exemplars, or (b) doing a small real call and inspecting the actual response before writing strict parsing/validation.",
+                    "note": "Prevents schema_or_name_mismatch where agents hardcode type-based schemas and break when docs use example-value schemas or slightly different field ordering/descriptions.",
+                    "source": {
+                        "task_id": "afc0fce_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00086",
+                    "content": "For comment/reaction sub-resources (e.g., /{id}/comments), don\u2019t assume canonical field names like `commenter` or audit fields like `updated_at`. After opening the docs, copy the comment object schema exactly (e.g., whether the author is under `user` vs `commenter`, and which timestamp fields exist) and base duplicate-detection/parsing on those documented fields.",
+                    "note": "Prevents schema/name mismatch when implementing comment inspection and de-duplication by grounding author/timestamp field usage in the endpoint\u2019s actual response schema.",
+                    "source": {
+                        "task_id": "afc0fce_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00087",
+                    "content": "When you need a time-bounded subset from a list endpoint (e.g., \u201clast N days\u201d), don\u2019t assume a generic page-based listing is the only option. In the endpoint docs, look specifically for server-side filter parameters like min_created_at/max_created_at (and their required format), direction (sent/received), and min/max like_count or amount. Use these documented filters to constrain the query first, then paginate within the narrowed window using the documented page_limit defaults/max constraints.",
+                    "note": "Prevents schema_or_name_mismatch and inefficient/incorrect enumeration by grounding recency filtering and pagination in the endpoint\u2019s actual documented filter/pagination contract (including date formats and limits) rather than guessed params like transaction_type or local filtering.",
+                    "source": {
+                        "task_id": "afc0fce_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00088",
+                    "content": "For comment/reaction creation endpoints (POST), don\u2019t assume the body field name (e.g., text/body/message). In docs_lookup, copy the exact required parameter names (e.g., comment vs text) and treat the documented success schema as authoritative\u2014often it returns only a {message, comment_id} stub. If you need the full comment/user/timestamps, plan an explicit follow-up GET/list call rather than parsing fields that aren\u2019t documented.",
+                    "note": "Prevents schema/name mismatch by grounding both request payload keys and success-response expectations for write endpoints in the docs, and by prompting a follow-up fetch when richer objects are needed.",
+                    "source": {
+                        "task_id": "afc0fce_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00090",
+                    "content": "For sub-resource listing endpoints (e.g., /{id}/comments, /{id}/likes), don\u2019t assume the item schema matches a generic template. After opening the docs, note any extra/nonstandard fields on each returned item (often parent ids, per-item like_count, or missing timestamps), and plan your downstream logic (dedupe checks, state decisions) around the documented/observed fields rather than expected ones.",
+                    "note": "Prevents schema_or_name_mismatch when using comment/like or other child-resource list endpoints whose per-item fields differ from typical CRUD assumptions.",
+                    "source": {
+                        "task_id": "afc0fce_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00092",
+                    "content": "Don\u2019t assume \u201cparallel\u201d schemas across similar library endpoints (songs/albums/playlists). When you open docs for a new resource type, explicitly verify (a) the exact boolean filter parameters and their semantics (e.g., is_public vs is_private, whether null means \u2018all\u2019), and (b) the exact metadata field names returned (e.g., owner object, created_at vs added_at). Use the documented names/semantics in later filtering and recency logic instead of inferring complementary fields.",
+                    "note": "Prevents schema_or_name_mismatch where agents generalize from one library endpoint to another and guess filter flags and timestamp/owner fields.",
+                    "source": {
+                        "task_id": "27e1026_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00096",
+                    "content": "When an endpoint is described as \u201csearch,\u201d verify from the docs whether it\u2019s actually the base collection GET (e.g., /notes) with optional query/filters rather than a separate /resource/search route. Before implementing fetch logic, copy the entire listing contract from the docs: which filters are optional (query, tags, pinned), pagination knobs and constraints (page_index/page_limit), default ordering/sort controls (sort_by and its default), and the exact identifier field name/type in results (e.g., note_id int vs id string).",
+                    "note": "Prevents schema/name mismatches on list-as-search endpoints by grounding route, parameter requiredness, pagination/sort behavior, and result id fields in the documented contract rather than assumed conventions.",
+                    "source": {
+                        "task_id": "22cc237_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00098",
+                    "content": "For transaction/history endpoints, don\u2019t assume a canonical \u201ctransactions\u201d schema or filter set (e.g., created_after/created_before, status/type, from_user/to_user, note). In the docs, explicitly verify (a) the exact filter parameter names (often min_*/max_*), (b) the required value formats (date-only vs ISO datetime; inclusive/exclusive), (c) paging limits/max page_limit, and (d) the per-item field names (e.g., description vs note; sender/receiver vs from_user/to_user) before writing queries or parsers.",
+                    "note": "Prevents schema/name mismatch caused by reusing generic transaction conventions instead of the endpoint\u2019s documented filter semantics, formats, and item schema.",
+                    "source": {
+                        "task_id": "22cc237_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00102",
+                    "content": "For \u201crequest money\u201d / payment-request creation endpoints, don\u2019t assume (a) the note/description is required, (b) privacy defaults to true, or (c) the success response returns the full payment-request object (status, parties, timestamps). In the docs, verify which fields are required vs optional (and their defaults) and whether success returns only an {message, id} stub\u2014then plan a follow-up fetch if you need the full request details.",
+                    "note": "Prevents schema/name mismatch on payment-request style POST endpoints by grounding requiredness/defaults and success payload richness in the documented contract rather than common Venmo-like conventions.",
+                    "source": {
+                        "task_id": "22cc237_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00105",
+                    "content": "When inspecting docs for a \u201clist\u201d endpoint you\u2019ll later use to reconcile state (e.g., has someone already paid), don\u2019t stop at pagination. Explicitly scan the parameter list for optional filters (query, counterpart identifier like user_email, min/max date, min/max amount, direction, privacy) and record the exact response field names used for human text (e.g., description vs note) before writing any matching/filtering logic.",
+                    "note": "Prevents schema/name mismatch where agents overlook non-obvious list filters and assume canonical transaction field names, leading to wrong queries and mis-parsing.",
+                    "source": {
+                        "task_id": "22cc237_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00106",
+                    "content": "For payment/request (or other money-movement) POST endpoints, don\u2019t assume (a) optional fields like description are required, or (b) the success response returns the full request/transaction object (status, parties, amounts, timestamps). Read the docs to confirm requiredness and defaults (e.g., description defaulting to \"\"), and treat success responses that only return {message, id} as stubs\u2014plan a follow-up GET/list call if you need the created object\u2019s details.",
+                    "note": "Prevents schema/name mismatch where the agent over-assumes required params and overestimates response richness for create payment/request endpoints, leading to incorrect validation and downstream parsing.",
+                    "source": {
+                        "task_id": "22cc237_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00107",
+                    "content": "When an endpoint returns person/user records, don\u2019t assume a single 'name' field exists. Check the response schema for split fields (first_name/last_name) and prefer stable identifiers (e.g., email) for matching/deduping. If later logic needs a display name, explicitly compose it (e.g., f\"{first_name} {last_name}\"), rather than parsing a non-existent 'name' field.",
+                    "note": "Prevents schema_or_name_mismatch where agents guess a canonical 'name' attribute for user records and then write filters/mappers that break; encourages mapping to an internal representation while using stable ids for decisions.",
+                    "source": {
+                        "task_id": "22cc237_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00109",
+                    "content": "For payment request / money-transfer creation endpoints, don\u2019t assume the recipient is identified by user_id or that the memo field is named note. In docs, explicitly verify (a) the recipient identifier type (often user_email/handle), (b) the exact message field name (often description), (c) any privacy/default flags (e.g., private default), and (d) whether success returns only {message, id} rather than a full created object\u2014then plan to store the returned id and fetch details separately if needed.",
+                    "note": "Prevents schema/name mismatches when constructing payment requests by grounding recipient addressing, memo/description naming, privacy behavior, and success-payload expectations in the documented contract.",
+                    "source": {
+                        "task_id": "22cc237_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00110",
+                    "content": "When you plan to find specific records via a list endpoint (e.g., transactions), don\u2019t assume only pagination/sort and a simple item schema. In the docs, explicitly scan for (a) server-side narrowing parameters (query, counterparty identifier like user_email, direction sent/received, and min/max range filters for date/amount/like_count/privacy) and (b) the exact per-item field structure (often nested objects). Use those documented filters/fields to design your fetch plan and matching logic instead of guessing a minimal parameter set.",
+                    "note": "Prevents schema_or_name_mismatch by forcing an explicit doc-driven inventory of non-obvious list filters and item structure before implementing transaction search/reconciliation.",
+                    "source": {
+                        "task_id": "22cc237_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00113",
+                    "content": "For list endpoints that sound like a subset (e.g., \u201csent/received/pending\u201d), don\u2019t invent a nested REST path or assume a generic status field. Open the docs for the exact callable and copy (a) the actual path name (it may not be /resource/{subset}), (b) any optional filter params like status with allowed values, and (c) the exact response fields used to represent state (often approved_at/denied_at timestamps rather than a status string) before writing filters or parsers.",
+                    "note": "Prevents schema/name mismatch from guessing subset routes and state representation on request/transaction listing endpoints.",
+                    "source": {
+                        "task_id": "22cc237_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00116",
+                    "content": "When inspecting a list endpoint\u2019s docs, explicitly look for server-side narrowing parameters (e.g., date range like min_created_at/max_created_at, direction, counterparty identifier like user_email, query) and use them in your fetch plan instead of assuming you must pull all pages and filter locally. Also record pagination limits (page_limit default/max) from the docs so your enumeration loop is designed around the real constraints.",
+                    "note": "Prevents schema/name mismatch where agents assume only basic pagination exists and overlook critical filter parameters and page_limit constraints that change how to correctly (and efficiently) retrieve the needed subset.",
+                    "source": {
+                        "task_id": "d0b1f43_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00117",
+                    "content": "For \u201cfollow/subscribe/join\u201d style mutation endpoints, don\u2019t assume the route is nested under the target resource (e.g., /artists/{id}/follow) or that success returns a boolean. Open the docs and copy the exact path (often a separate collection like /following_* /subscriptions_*) and the exact success payload (often only a {message} stub), then plan any needed verification as a separate read/list call.",
+                    "note": "Prevents schema/path and success-payload assumptions on follow-like mutation endpoints by grounding request construction and downstream checks in the documented contract.",
+                    "source": {
+                        "task_id": "b7a9ee9_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00118",
+                    "content": "For \u201cis X following?\u201d / relationship-status endpoints, don\u2019t assume the GET path mirrors the follow/unfollow (POST/DELETE) route, and don\u2019t assume the response echoes the resource id (e.g., artist_id) or uses a canonical boolean name (is_following). Always open the specific status-check endpoint docs to confirm the exact path pattern (often /resource/{id}/following) and the exact boolean field name (e.g., following), then code to that minimal schema.",
+                    "note": "Prevents schema/name mismatches where agents infer relationship-check paths and response fields from the follow mutation endpoint or from common boolean naming conventions.",
+                    "source": {
+                        "task_id": "b7a9ee9_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00120",
+                    "content": "For \u201cfollow/subscribe\u201d style endpoints, don\u2019t assume canonical user-scoped routes (e.g., /me/.../following/...). Always open the specific endpoint\u2019s docs and copy the exact path template and required parameters (including whether artist_id is in the path and whether access_token is a parameter) before implementing the follow loop.",
+                    "note": "Prevents schema/name mismatch where agents invent conventional follow URL patterns instead of using the documented route template for the app.",
+                    "source": {
+                        "task_id": "b7a9ee9_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00121",
+                    "content": "Don\u2019t assume a \u201ccheck status\u201d endpoint (e.g., show_*_following) shares the same path pattern or response fields as the corresponding \u201cdo action\u201d endpoint (e.g., follow_*). When you need to branch on follow/like state, open the docs for the specific check endpoint and code to its exact success schema (often a single boolean like following) rather than expecting echoed ids or fields like is_following.",
+                    "note": "Prevents schema/name mismatch caused by extrapolating GET status endpoints from related POST action endpoints; ensures correct parsing of minimal boolean response schemas.",
+                    "source": {
+                        "task_id": "b7a9ee9_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00122",
+                    "content": "When inspecting \u201clibrary/list playlists\u201d (or similar collection) endpoints, don\u2019t invent convenience fields like num_songs or assume a minimal item shape. In the docs, verify whether items include (a) relationship references like song_ids vs embedded song objects and (b) extra per-item metadata like owner objects and counts/ratings. Base downstream logic on those exact fields: derive counts from array lengths when only *_ids are provided, and plan follow-up detail calls to resolve ids into full objects.",
+                    "note": "Prevents schema_or_name_mismatch from assuming simplified/derived list fields and missing relationship/metadata fields that determine how to paginate, parse, and plan follow-up fetches.",
+                    "source": {
+                        "task_id": "b7a9ee9_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00123",
+                    "content": "For follow/like (or other POST mutation) endpoints, don\u2019t assume a conventional user-scoped path (e.g., /me/...) or that success returns a boolean like {followed: true}. Read the docs for the exact path and success schema; if the response is only a {message} stub, plan a separate \u201cshow/check following\u201d read (or listing) endpoint to confirm the new state instead of parsing a non-existent flag.",
+                    "note": "Prevents schema_or_name_mismatch by grounding both routing (path) and success-payload expectations for mutation endpoints, and by prompting explicit state verification when the write response is only a message stub.",
+                    "source": {
+                        "task_id": "b7a9ee9_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00124",
+                    "content": "When working with paired \u201crelationship\u201d endpoints (e.g., follow/unfollow vs check-following), don\u2019t assume the check endpoint shares the same path template as the mutation endpoint. Open the docs for the specific check API to confirm the exact route pattern (often /resource/{id}/relationship) and the precise success payload (frequently a single boolean like following), then map that boolean to your internal name if needed.",
+                    "note": "Prevents schema/name mismatches where agents reuse follow/unfollow paths for status checks and assume response fields like {artist_id, is_following} instead of the documented minimal boolean field.",
+                    "source": {
+                        "task_id": "b7a9ee9_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00126",
+                    "content": "For file-system directory listing endpoints, don\u2019t assume a generic {path, recursive=false} interface. Open the per-endpoint docs and copy the exact required auth (often access_token), the real directory parameter name (e.g., directory_path with a default like '/'), the documented default for recursive, and any built-in filtering parameters (e.g., substring, entry_type) so later listing/filtering logic matches what the API actually supports.",
+                    "note": "Prevents schema/name mismatches on file listing by grounding auth requirements, parameter names/defaults, and available filters in the concrete show_directory docs instead of common filesystem conventions.",
+                    "source": {
+                        "task_id": "76f2c72_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00129",
+                    "content": "When planning to list files/directories, don\u2019t assume the endpoint takes a generic `path` or returns `{path,type}` objects. Open the endpoint docs and copy the exact contract: required auth params (often `access_token` even for GET listings), the real directory parameter name (e.g., `directory_path`), any built-in filters (`substring`, `entry_type`, `recursive`) and their defaults, and the exact response shape (sometimes just a list of strings). Then design your traversal to match (e.g., apply server-side filters via params, and treat returned strings as paths/names unless docs say otherwise).",
+                    "note": "Prevents schema/name mismatch on filesystem listing endpoints by grounding both request parameters and listing response shape in the documented contract (including auth and filtering knobs) instead of assuming conventional `path` + list-of-objects.",
+                    "source": {
+                        "task_id": "76f2c72_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00133",
+                    "content": "For file-system directory listing endpoints, don\u2019t assume a minimal interface like (path, recursive) or that reads are unauthenticated. Open the endpoint docs and copy the exact parameter names and defaults (e.g., required access_token, directory_path vs path, optional substring/entry_type filters, recursive default), and confirm the success payload type (often a plain list of strings) before writing the call or downstream parsing.",
+                    "note": "Prevents schema/name mismatch on file listing by verifying required auth, non-canonical parameter names, filter options, and response shape instead of relying on typical filesystem conventions.",
+                    "source": {
+                        "task_id": "76f2c72_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00137",
+                    "content": "For file/directory listing endpoints, don\u2019t assume generic parameters like path/page_index or an object response. Read the docs to capture (a) whether access_token is required even for GET listings, (b) the exact directory parameter name (often directory_path with a default like '/'), (c) supported filters (e.g., substring, entry_type) and their allowed values, and (d) the exact success schema (often a plain list of entry strings). Base traversal/filtering logic on these documented names/defaults rather than conventions.",
+                    "note": "Prevents schema/name mismatches when moving from directory-listing docs to correct enumeration and filtering behavior.",
+                    "source": {
+                        "task_id": "34d9492_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00138",
+                    "content": "When using file detail/read endpoints, don\u2019t assume a generic {file_path, metadata} response. Open the docs and code against the exact returned fields (often {file_id, path, content, created_at, updated_at}); if you need filesystem \u201cmetadata,\u201d derive it from the documented fields or add an explicit mapping layer rather than parsing nonexistent keys.",
+                    "note": "Prevents schema/name mismatches where agents guess a conventional metadata wrapper and miss the actual id/path/timestamp fields needed for downstream logic like date-based organization.",
+                    "source": {
+                        "task_id": "34d9492_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00143",
+                    "content": "For file/directory listing endpoints (e.g., show_directory), don\u2019t assume they\u2019re unauthenticated, paginated, or return rich file objects. Open the endpoint docs and copy the exact required auth params (often access_token), the exact directory argument name (e.g., directory_path, not path), available filters (substring/entry_type/recursive defaults), and the concrete response shape (often a plain list of path strings) before writing traversal, filtering, or pagination logic.",
+                    "note": "Prevents schema/name mismatches on filesystem enumeration by grounding request construction and parsing in the endpoint\u2019s actual contract (auth + parameter names + response type), rather than typical 'ls-like' assumptions.",
+                    "source": {
+                        "task_id": "34d9492_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00145",
+                    "content": "For file/detail endpoints (e.g., show_file), don\u2019t assume metadata is returned as a nested object or that fields use canonical names like file_path/modified_at/size_bytes. Read the documented success schema and align your code to its exact shape (often flat fields like file_id, path, created_at, updated_at). If you need a different representation (e.g., a metadata dict), build it explicitly from the returned fields rather than expecting it from the API.",
+                    "note": "Prevents schema/name mismatch caused by guessing nested-vs-flat metadata layouts and timestamp/identifier field names on file detail APIs.",
+                    "source": {
+                        "task_id": "34d9492_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00149",
+                    "content": "For endpoints with boolean flags (e.g., recursive), don\u2019t assume conventional defaults or meanings. In the docs, read the flag\u2019s default value and its exact behavioral description (what happens when True vs False), then explicitly set the flag in your call when the default could change the outcome (e.g., creating parent directories or not).",
+                    "note": "Prevents schema/name mismatch where agents rely on assumed flag defaults/semantics and get different behavior than intended, especially on file-system create/move/copy operations.",
+                    "source": {
+                        "task_id": "34d9492_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00150",
+                    "content": "For file/directory listing endpoints (e.g., show_directory), don\u2019t assume they\u2019re unauthenticated or have only path+recursive. In the endpoint docs, explicitly record: (a) whether access_token is required, (b) which parameters are optional and their defaults (e.g., directory_path default, recursive default), (c) any built-in filtering knobs (substring, entry_type), and (d) the failure schema. Use those documented defaults/filters to drive traversal and filtering logic rather than guessing typical behaviors.",
+                    "note": "Prevents schema_or_name_mismatch on filesystem read/list calls by grounding auth requirements, parameter set, defaults, and filter capabilities in the documented contract.",
+                    "source": {
+                        "task_id": "34d9492_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00152",
+                    "content": "For file \u201cshow/get\u201d endpoints, don\u2019t assume a generic response shape like {file_path, metadata{size_bytes, created_time, modified_time}}. After opening the docs, copy the exact top-level keys actually returned (often id + path + content + created_at/updated_at) and base all parsing/field access on those names; if you prefer a metadata-style internal model, add an explicit mapping layer from the real flat schema to your internal structure.",
+                    "note": "Prevents schema_or_name_mismatch caused by assuming canonical file metadata nesting and timestamp field names when the API returns a different (often flatter) contract.",
+                    "source": {
+                        "task_id": "34d9492_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00154",
+                    "content": "When selecting or implementing \u201cremove/delete/unlike\u201d operations, don\u2019t assume a POST to a custom /remove route or a {removed: true} response. In the docs, verify (a) whether deletion is modeled as DELETE on the resource path with an id in the URL (e.g., /resource/{id}) vs a body parameter, (b) the exact parameter placement/order (path params vs body/query), and (c) whether success returns only a {message} stub\u2014then design follow-up verification (e.g., re-list) accordingly.",
+                    "note": "Prevents schema/name mismatch from guessing delete endpoint shape (verb/path/id placement) and over-assuming a boolean success payload.",
+                    "source": {
+                        "task_id": "ce359b5_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00157",
+                    "content": "For messaging/SMS \u201csearch/list\u201d endpoints, don\u2019t assume a flat message preview schema (id/contact_phone_number/timestamp) or a special /text_messages/search route. Open the docs and copy (a) the real path, (b) the exact contact filter parameter name (often phone_number, not contact_*), (c) any conversation/list switches (e.g., only_latest_per_contact) plus pagination/sort controls, and (d) the response shape (often nested sender/receiver objects). Add a small mapping layer before filtering/deleting so downstream logic keys off the documented fields (e.g., sender.phone_number/receiver.phone_number, text_message_id).",
+                    "note": "Prevents schema/name mismatch on phone/message endpoints by grounding both the request filters and the participant/ID fields used for follow-up deletes in the documented contract.",
+                    "source": {
+                        "task_id": "771d8fc_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00158",
+                    "content": "When inspecting docs for messaging/search endpoints, don\u2019t assume results are flat (id/timestamp/snippet). Verify the actual item schema (often nested sender/receiver objects and fields like sent_at/message) and record any mode toggles (e.g., only_latest_per_contact) plus pagination/sort params (page_limit, sort_by) and the failure schema. Use this to decide whether you must request full per-message listings (not latest-per-contact) before performing bulk actions like deletion.",
+                    "note": "Prevents schema_or_name_mismatch where agents overlook non-obvious search/list flags and mis-handle nested message schemas, leading to incomplete enumeration or incorrect parsing before delete workflows.",
+                    "source": {
+                        "task_id": "771d8fc_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00162",
+                    "content": "Keep docs_lookup and data-fetch expectations separate: when calling api_docs.show_api_doc (or similar), expect a structured contract object (path, method, parameters, response_schemas), not task data like counts/IDs. Use the returned contract to plan the next real fetch/mutation call; only predict message counts or deletion results after running the corresponding search/list endpoint.",
+                    "note": "Prevents schema/name mismatch caused by conflating documentation inspection outputs with live endpoint results; improves step planning by grounding expectations in the docs object schema.",
+                    "source": {
+                        "task_id": "771d8fc_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00164",
+                    "content": "Don\u2019t assume the \u201ccheck following status\u201d (GET) endpoint shares the same route or response shape as the \u201cfollow/unfollow\u201d (POST/DELETE) endpoint. Even if callable names look paired, open the docs for the specific GET endpoint and copy (a) the exact path pattern (it may be under /artists/{id}/... rather than /following_artists/{id}) and (b) the precise success schema (often a single boolean like following, not {artist_id, is_following}).",
+                    "note": "Prevents schema/path guesswork by treating follow mutations and follow-status reads as separate contracts that must be verified in docs.",
+                    "source": {
+                        "task_id": "07b42fd_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00165",
+                    "content": "For follow/like (mutation) endpoints, don\u2019t assume a conventional path (e.g., /me/following/...) or a boolean success field (e.g., followed=true). Read the docs to capture the exact path/method and the real success schema (often only a {message} stub); if you must confirm the follow state, plan an explicit follow-up read/list endpoint rather than inferring success from an expected boolean payload.",
+                    "note": "Prevents schema_or_name_mismatch where agents guess follow/like routes and over-assume rich/boolean success responses; encourages planning verification via documented read endpoints when success returns only a message.",
+                    "source": {
+                        "task_id": "07b42fd_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00166",
+                    "content": "When pairing a mutation endpoint (e.g., follow/unfollow) with a \u201ccheck status\u201d endpoint, don\u2019t assume the GET path mirrors the POST/DELETE route (or even shares the same base prefix). Open the specific \u201cshow/check\u201d endpoint docs and copy (a) its exact path and (b) the exact boolean field name in the success schema (e.g., following vs is_following) before writing request logic or conditionals.",
+                    "note": "Prevents schema/path guessing based on nearby endpoints; ensures follow-status checks parse the documented boolean key from the correct route.",
+                    "source": {
+                        "task_id": "07b42fd_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00167",
+                    "content": "For \u201cfollow/subscribe/join\u201d style mutation endpoints, don\u2019t assume the route pattern (e.g., /resource/{id}/follow) or that success returns a boolean state. Always open the specific endpoint docs and copy the exact path/method and success schema; if success returns only a {message} stub, plan a separate read/check endpoint to confirm the resulting followed/subscribed state if needed.",
+                    "note": "Prevents schema/name mismatch from guessing follow-action URL patterns and over-assuming rich/boolean success responses on mutation endpoints.",
+                    "source": {
+                        "task_id": "07b42fd_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00168",
+                    "content": "When working with paired endpoints like follow/unfollow vs \u201cshow following status,\u201d don\u2019t assume the status-check shares the same route template as the mutation endpoint (e.g., /following_resource/{id}). Open the docs for the specific status endpoint and copy (a) its exact path (often /resource/{id}/following) and (b) the exact boolean field name in the success schema (e.g., following vs is_following) before writing any request construction or parsing logic.",
+                    "note": "Prevents schema/path guessing from similar-but-not-identical follow-state endpoints by forcing doc verification of route patterns and boolean field names.",
+                    "source": {
+                        "task_id": "07b42fd_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00169",
+                    "content": "For file/directory listing endpoints, don\u2019t assume generic parameter names like path or a file-object response. In the per-endpoint docs, copy the exact required auth parameter (often access_token), the exact directory parameter name (e.g., directory_path), any optional filters (substring, entry_type), and defaults (e.g., recursive may default true). Also confirm the success item type (often a list of strings/paths, plus a failure {message}) and design downstream parsing accordingly.",
+                    "note": "Prevents schema_or_name_mismatch by grounding both request construction (auth + exact param names/defaults) and result parsing (string list vs objects) in the documented contract for directory listing APIs.",
+                    "source": {
+                        "task_id": "3c13f5a_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00172",
+                    "content": "Before implementing a create/request/payment (POST) call, open the specific endpoint docs and copy the exact request/response contract into your plan: (a) parameter names (e.g., description vs note), (b) any optional behavior flags (e.g., private/public) and their defaults\u2014set them explicitly if they matter, and (c) the success schema (often a {message, *_id} stub with integer ids, not a rich object/status). Don\u2019t write downstream logic that expects fields the docs don\u2019t promise.",
+                    "note": "Prevents schema_or_name_mismatch on mutation endpoints by grounding both the outgoing payload and success parsing (including privacy/default flags and stub responses) in the documented contract.",
+                    "source": {
+                        "task_id": "3c13f5a_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00173",
+                    "content": "For filesystem/listing endpoints, don\u2019t assume conventional parameter names like path or a wrapped response like {entries: [...]}. In the docs, copy the exact required auth fields (e.g., access_token), the exact directory parameter name (e.g., directory_path vs path), and any filter parameters (substring/entry_type/recursive), and confirm whether the success payload is a raw list (e.g., [\"...\"]) versus an object\u2014then design the call/parsing to match.",
+                    "note": "Prevents schema/name mismatch on directory/list-style endpoints by grounding both request parameter names/requiredness and the list-vs-object success shape in the documented contract.",
+                    "source": {
+                        "task_id": "3c13f5a_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00175",
+                    "content": "When you plan to \u201csearch\u201d within a collection (contacts/users/items), verify in the docs whether the API uses the base collection GET (e.g., /resource) with optional query/filter params and pagination (page_index/page_limit) rather than a separate /resource/search route. Copy the exact query parameter name (often query, not name) and expect richer per-record fields (ids, first_name/last_name, relationships[], addresses), adding a mapping step if you need a simplified {name, relationship} view.",
+                    "note": "Prevents schema/name mismatches when implementing search-by-list endpoints: wrong assumed path, wrong query parameter name, and missing pagination + response-field mapping.",
+                    "source": {
+                        "task_id": "3c13f5a_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00176",
+                    "content": "For payment-request/money-request endpoints, don\u2019t assume the recipient is specified by an internal user_id or that you can pass a generic note/audience. In the docs, verify the exact recipient identifier required (often user_email or phone), the note field name (e.g., description), and privacy flags (e.g., private boolean). Also confirm whether success returns only {message, payment_request_id} (a stub) and plan any follow-up lookup by id if you need details.",
+                    "note": "Prevents schema_or_name_mismatch where agents guess recipient addressing and request/response fields for payment request creation.",
+                    "source": {
+                        "task_id": "3c13f5a_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00177",
+                    "content": "For filesystem listing endpoints (e.g., show_directory), don\u2019t assume a single `path` parameter or unauthenticated access. In the docs, verify the exact required auth parameter (often `access_token`), the correct directory parameter name (e.g., `directory_path`), and any built-in filters (e.g., `substring`, `entry_type`) plus defaults like `recursive`. Use those documented names/defaults to construct listing calls and to avoid writing unnecessary client-side filtering.",
+                    "note": "Prevents schema/name mismatch on directory listing by grounding request parameters, auth requirements, and filtering behavior in the endpoint\u2019s actual contract instead of guessed conventions.",
+                    "source": {
+                        "task_id": "3c13f5a_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00178",
+                    "content": "When preparing to send/request money via a payments API, don\u2019t assume the counterparty identifier is a numeric user_id. In the endpoint docs, verify the exact recipient field (often user_email/phone/username), then ensure your upstream data source provides that field (or add a lookup/mapping step) before implementing the call. Also copy the exact memo field name (e.g., description vs note) and any optional privacy flags (e.g., private) from the documented parameters.",
+                    "note": "Prevents schema/name mismatches where the agent guesses recipient identifiers and memo/privacy parameter names on payment request endpoints, which would cause failed calls or missing required inputs.",
+                    "source": {
+                        "task_id": "3c13f5a_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00180",
+                    "content": "For update/mutation endpoints, don\u2019t assume the verb or return shape (e.g., PUT returning the full updated record). In the docs, confirm whether the method is PATCH vs PUT and whether the success schema is only a stub (often {message}). If the response doesn\u2019t include the updated object, plan an explicit follow-up GET (show_* endpoint) to re-fetch the resource for verification or further edits, and note any documented field constraints (e.g., title length >= 1) before constructing the update payload.",
+                    "note": "Prevents schema_or_name_mismatch where agents mis-predict mutation verb/response richness and miss constraints, leading to failed requests or broken downstream parsing.",
+                    "source": {
+                        "task_id": "cf6abd2_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00182",
+                    "content": "For update/mutation endpoints, verify in the docs both (a) the exact HTTP method (often PATCH, not PUT) and (b) the success response shape (often just a {message} stub, not the full updated object). If the response is a stub, plan an explicit follow-up GET (e.g., show_* by id) to re-fetch the updated record for confirmation or further processing.",
+                    "note": "Prevents schema/name mismatch where agents assume PUT semantics and expect a full resource in the update response, causing broken parsing and missing verification steps.",
+                    "source": {
+                        "task_id": "cf6abd2_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00184",
+                    "content": "When preparing to mutate a resource (update/edit) based on API docs, verify three things before writing the call logic: (1) the exact HTTP method (PATCH vs PUT), (2) any parameter constraints (e.g., min title length) that affect what payloads are valid, and (3) whether the success response is only a stub (e.g., {message}) rather than the updated object. If the response is a stub, plan an explicit follow-up GET (show/read endpoint) to retrieve the updated record for verification or further processing.",
+                    "note": "Prevents schema/name mismatch where agents assume PUT semantics, miss documented field constraints, or expect the updated object to be returned from an update endpoint.",
+                    "source": {
+                        "task_id": "cf6abd2_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00186",
+                    "content": "For update/mutation endpoints, don\u2019t assume the success response returns the full updated resource. Check the documented success schema; if it\u2019s only a stub (e.g., {message}), avoid parsing nonexistent fields and plan an explicit follow-up read (e.g., show_* by id) if you need the updated object state.",
+                    "note": "Prevents schema/name mismatch where agents overestimate mutation response payloads and break downstream logic that expects full objects.",
+                    "source": {
+                        "task_id": "302c169_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00189",
+                    "content": "For update/mutation endpoints, don\u2019t assume the success response returns the updated resource fields. In the docs, check whether success is only a stub (e.g., {message}); if so, plan a follow-up read (e.g., show_* by id or re-list) to verify the new state, and avoid writing code that parses updated fields from the mutation response.",
+                    "note": "Prevents schema_or_name_mismatch where agents overestimate mutation response richness and skip the necessary follow-up fetch to confirm changes.",
+                    "source": {
+                        "task_id": "302c169_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00193",
+                    "content": "When reading an endpoint\u2019s docs, explicitly verify the identifier contract: the exact id field name(s) used in requests and responses (e.g., playlist_id vs id) and their types (integer vs string). Carry those exact names/types into all subsequent calls and parsing (cast/translate only via an explicit mapping layer), and record the documented failure schema so downstream logic can branch on error responses instead of assuming success-only shapes.",
+                    "note": "Prevents schema/name mismatches caused by guessing id field names/types and ignoring documented failure response shapes.",
+                    "source": {
+                        "task_id": "e7a10f8_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00195",
+                    "content": "For \u201cplayer/play\u201d style endpoints, don\u2019t assume the route prefix (e.g., /player/*) or that success returns a generic {status}. Always open the specific endpoint\u2019s docs and copy (a) the exact path (often under a feature-specific prefix like /music_player/...), (b) the exact parameter list and any constraints (e.g., queue_position must be >= 0), and (c) the concrete success schema (often {message, song_id} stubs) before writing request construction or response parsing.",
+                    "note": "Prevents schema/name mismatch on media-player controls by avoiding guessed path prefixes and generic success-field assumptions; grounds playback actions in the documented contract.",
+                    "source": {
+                        "task_id": "c901732_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00196",
+                    "content": "For player/control endpoints (e.g., play/pause/queue), don\u2019t assume standard REST paths (like /player/...) or generic success fields (like status). Always read the endpoint docs and copy the exact path plus the success response keys you will rely on (e.g., message, song_id) before implementing request construction or downstream parsing.",
+                    "note": "Prevents schema/name mismatch on playback/control calls where paths and success payloads often differ from guessed conventions.",
+                    "source": {
+                        "task_id": "c901732_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00198",
+                    "content": "When you open an endpoint\u2019s docs, treat parameter types/constraints and the full response contract as executable truth: (a) record whether identifiers are int vs string (and cast/parse accordingly before calling), (b) note any constraints like queue_position >= 0, and (c) capture both success and failure schemas (often {message, id/...}) so downstream code can branch on errors and confirm what actually played.",
+                    "note": "Prevents schema/name mismatch where agents assume string IDs, ignore documented constraints, or expect a generic {status} response and then mis-construct requests or mis-handle playback results.",
+                    "source": {
+                        "task_id": "c901732_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                }
+            ],
+            "missing_decisive_information": [
+                {
+                    "skill_id": "sk-00001",
+                    "content": "During docs lookup, don\u2019t leave results as \u201cunknown\u201d: explicitly read and record the specific endpoint names (and any key hints like required auth or object types) that are relevant to the task; if the docs output is truncated, re-query/expand until you can see the full list needed to choose the next call.",
+                    "note": "Missing decisive information often comes from not extracting actionable API names from returned docs or from ignoring truncation.",
+                    "source": {
+                        "task_id": "82e2fac_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "missing_decisive_information"
+                    }
+                },
+                {
+                    "skill_id": "sk-00003",
+                    "content": "When looking up an API doc you plan to call next, explicitly capture the full callable interface: HTTP method, path, required parameters, and both success and failure response schemas (e.g., error/message fields). Use these details to form the request and to branch on failure responses rather than assuming \u201csuccess-only\u201d outputs.",
+                    "note": "Prevents missing decisive interface details (method/path and failure schema) that affect how to call the endpoint and interpret feedback.",
+                    "source": {
+                        "task_id": "82e2fac_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "missing_decisive_information"
+                    }
+                },
+                {
+                    "skill_id": "sk-00005",
+                    "content": "When inspecting docs for list/library endpoints, explicitly note optional filter and pagination controls (e.g., visibility filters, page_limit/page_index) and any constraints/defaults; use them to plan complete retrieval (iterate pages) and to avoid fetching the wrong subset by assuming defaults.",
+                    "note": "Prevents missing decisive information about how to scope and paginate list results during docs lookup.",
+                    "source": {
+                        "task_id": "82e2fac_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "missing_decisive_information"
+                    }
+                },
+                {
+                    "skill_id": "sk-00019",
+                    "content": "When calling an API that lists available endpoints (e.g., show_api_descriptions), don\u2019t predict/assume a small expected subset; instead, scan and enumerate the full returned list and explicitly note any endpoints that may be prerequisites (task state, identity/profile, payment/auth helpers) before deciding the next tool call.",
+                    "note": "Prevents missing decisive options during docs lookup by avoiding \u201cI already know what will be there\u201d assumptions and forcing a complete pass over the returned endpoint set.",
+                    "source": {
+                        "task_id": "82e2fac_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "missing_decisive_information"
+                    }
+                },
+                {
+                    "skill_id": "sk-00027",
+                    "content": "During docs lookup for list/query endpoints, explicitly enumerate all optional filter/search/sort parameters (not just pagination) and note any interaction rules mentioned in the docs (e.g., query relevance ranking before pagination, then per-page sorting). Use these parameters deliberately to scope results (such as filtering to the current user) instead of assuming the endpoint only supports basic listing.",
+                    "note": "Prevents missing decisive interface controls (filters/sorting semantics) that affect what data you can retrieve and how to target the right subset for downstream actions.",
+                    "source": {
+                        "task_id": "692c77d_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "missing_decisive_information"
+                    }
+                },
+                {
+                    "skill_id": "sk-00031",
+                    "content": "When inspecting docs for a \u201cprivates/status\u201d endpoint, explicitly record the complete success schema (all boolean state flags) and the exact field names; don\u2019t assume a minimal subset like {liked, in_library}. Use the returned keys verbatim in later logic because similar-looking names (e.g., in_library vs in_song_library) often differ across endpoints.",
+                    "note": "Prevents missing decisive response-state fields and key-name drift during docs lookup, which can break later condition checks and update decisions.",
+                    "source": {
+                        "task_id": "692c77d_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "missing_decisive_information"
+                    }
+                },
+                {
+                    "skill_id": "sk-00035",
+                    "content": "In docs lookup, when the next steps will update or compare record state (e.g., ratings/likes), explicitly read the success schema and note the exact field names and types you\u2019ll need (IDs, current rating/state fields, and any nested structures you must traverse). Don\u2019t assume minimal list items; plan parsing based on the documented object shape.",
+                    "note": "Prevents missing decisive response fields during docs lookup that are required for later update logic (e.g., needing current rating and item identifiers, plus nested structures).",
+                    "source": {
+                        "task_id": "692c77d_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "missing_decisive_information"
+                    }
+                },
+                {
+                    "skill_id": "sk-00055",
+                    "content": "When doing docs lookup for list/library endpoints you will export/transform (e.g., to CSV), don\u2019t assume a flat response: explicitly record the exact item schema including nested object structures and types (e.g., artists as [{id,name}] vs [string]) and any extra fields you may need for joins/dedup (album_id/title). Plan parsing/mapping based on the documented shape before writing retrieval/export code.",
+                    "note": "Prevents missing decisive response-shape details during docs lookup that otherwise cause incorrect parsing (nested objects vs strings) and incomplete/incorrect exports.",
+                    "source": {
+                        "task_id": "6104387_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "missing_decisive_information"
+                    }
+                },
+                {
+                    "skill_id": "sk-00056",
+                    "content": "During docs lookup, don\u2019t assume list/library items only contain the obvious export fields (e.g., title/artists). Read the *entire* success item schema and note any extra identifiers/relations (e.g., embedded child IDs like song_ids, release_date, genre, stats) that could enable joins, deduping, or reduce the number of follow-up API calls. Use those documented fields to plan the minimal set of retrieval calls needed for the task\u2019s output format.",
+                    "note": "Prevents missing decisive response fields in list schemas that can materially change the retrieval/export plan (e.g., avoid extra per-item fetches by leveraging IDs/relations already present).",
+                    "source": {
+                        "task_id": "6104387_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "missing_decisive_information"
+                    }
+                },
+                {
+                    "skill_id": "sk-00065",
+                    "content": "When checking an endpoint\u2019s API doc, explicitly verify per-endpoint auth requirements from the parameter list (e.g., whether access_token is required), even for endpoints that sound public (like viewing a public playlist). Use the documented parameters verbatim to decide which calls can be made without a token and to avoid missing required auth args or passing unsupported ones.",
+                    "note": "Clarifies that auth requirements can vary by endpoint and may still apply to seemingly public resources; prevents missing required access_token during subsequent calls.",
+                    "source": {
+                        "task_id": "6104387_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "missing_decisive_information"
+                    }
+                },
+                {
+                    "skill_id": "sk-00068",
+                    "content": "When looking up docs for file read/write endpoints (e.g., show_file/create_file/update_file), record the full success schema including metadata like canonical path, file_id, and created_at/updated_at\u2014not just content. Use these fields later to verify you wrote/read the intended file and to drive follow-up actions that may require canonical identifiers/paths.",
+                    "note": "Prevents missing decisive response fields needed for validating file operations and avoiding path/id ambiguity.",
+                    "source": {
+                        "task_id": "6104387_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "missing_decisive_information"
+                    }
+                },
+                {
+                    "skill_id": "sk-00094",
+                    "content": "When reading an API doc for an endpoint you\u2019ll call, copy the exact path/route from the docs (don\u2019t infer common prefixes like /me/). Also enumerate any optional ordering controls (e.g., sort_by), including valid values and defaults, since they can materially change which items you see first and how you should page through results.",
+                    "note": "Prevents missing decisive interface details in docs lookup (exact path + optional sort/default semantics) that otherwise leads to wrong call construction or incorrect assumptions about returned ordering.",
+                    "source": {
+                        "task_id": "27e1026_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "missing_decisive_information"
+                    }
+                },
+                {
+                    "skill_id": "sk-00141",
+                    "content": "When looking up docs for file move/copy endpoints, explicitly check for optional semantics flags (e.g., overwrite/collision behavior and whether to retain original timestamps) and record their defaults, then decide values intentionally before running bulk moves. Also note any canonicalized return fields (e.g., destination_file_path) you can use to verify the move landed where expected.",
+                    "note": "Prevents missing decisive interface details for destructive filesystem operations where defaults (no overwrite, not retaining dates) can cause failures or unwanted metadata changes.",
+                    "source": {
+                        "task_id": "34d9492_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "missing_decisive_information"
+                    }
+                },
+                {
+                    "skill_id": "sk-00153",
+                    "content": "When doing docs lookup for an endpoint you\u2019ll use to filter items (e.g., by date, status, ownership), explicitly identify the exact response field(s) that support the filter and record their datatype/format (e.g., release_date as ISO datetime vs date-only). Base later comparisons/parsing on the documented format instead of assuming a simplified representation.",
+                    "note": "Prevents missing decisive schema details (especially date/time formats) that drive downstream filtering logic and can cause incorrect inclusion/exclusion.",
+                    "source": {
+                        "task_id": "ce359b5_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "missing_decisive_information"
+                    }
+                },
+                {
+                    "skill_id": "sk-00155",
+                    "content": "When inspecting docs for container/list endpoints you\u2019ll later mutate (e.g., playlists containing songs), explicitly check for optional scope toggles (like public/private booleans) and record which response fields expose membership (e.g., embedded child IDs such as song_ids). Use these to (1) query the correct subset (public vs private) and (2) plan bulk actions from the returned membership list instead of assuming you must fetch each container\u2019s items separately.",
+                    "note": "Prevents missing decisive interface/schema details (visibility scoping + embedded membership IDs) that change retrieval strategy and downstream mutation planning.",
+                    "source": {
+                        "task_id": "ce359b5_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "missing_decisive_information"
+                    }
+                }
+            ],
+            "value_or_state_mismatch": [
+                {
+                    "skill_id": "sk-00010",
+                    "content": "During docs lookup, don\u2019t assume \u201cprivate\u201d/detail endpoints expose the specific metric you need (e.g., play counts). Read the documented success schema and only plan downstream logic around fields that actually exist; if the needed field is absent, search docs for another endpoint or revise the approach before fetching data.",
+                    "note": "Avoid inventing response fields; verify the presence of the decisive metric in the response schema before committing to an interaction plan.",
+                    "source": {
+                        "task_id": "82e2fac_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00017",
+                    "content": "When inspecting an API via docs, treat the documented response schema as authoritative: enumerate the exact fields (and their types/units) you will rely on, and avoid assuming \u201cstandard\u201d fields exist (e.g., duration, album_title, shareable_link) or that numeric fields have a particular type/value. If a required attribute is missing or typed differently, adjust the plan (use another endpoint or derive it) before proceeding to fetch/compute.",
+                    "note": "Prevents downstream logic from depending on invented/mistyped response fields discovered only after implementation.",
+                    "source": {
+                        "task_id": "82e2fac_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00023",
+                    "content": "When checking a \u201c*_privates\u201d/user-private endpoint in docs, explicitly classify what it returns (boolean state flags vs detailed user metadata like rating/review). Don\u2019t proceed assuming ratings/reviews are available; if the success schema only exposes flags (e.g., liked/reviewed/downloaded), immediately look up the specific rating/review write/read APIs or another endpoint that actually contains those fields.",
+                    "note": "Prevents building a plan around private endpoints that only expose status booleans rather than the needed user-specific attributes.",
+                    "source": {
+                        "task_id": "692c77d_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00053",
+                    "content": "For login/auth endpoints, don\u2019t assume the meaning of generic parameters like `username` (email vs phone number vs handle). During docs lookup, read the parameter descriptions/constraints to determine the required identifier type and then fetch/use the matching credential source before calling the API.",
+                    "note": "Prevents cross-app credential-type assumptions (e.g., treating phone login as email login) that cause avoidable auth failures.",
+                    "source": {
+                        "task_id": "2a163ab_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00140",
+                    "content": "During docs lookup, don\u2019t assume \u201cconvenient\u201d defaults for optional parameters (e.g., `recursive`, pagination flags, include/exclude toggles). Read the documented default values and constraints and explicitly pass the parameter when your plan depends on it (e.g., set `recursive=True` if parent directories must be created).",
+                    "note": "Prevents downstream actions from relying on incorrect default behaviors inferred from intuition rather than the API\u2019s documented defaults.",
+                    "source": {
+                        "task_id": "34d9492_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00159",
+                    "content": "When moving between closely related endpoints (e.g., text vs voice messages), don\u2019t reuse the assumed response fields from the \u201csimilar\u201d API. Re-check the specific endpoint\u2019s documented success schema and base downstream parsing/deletion logic only on fields that actually appear there (IDs, content field names, timestamps).",
+                    "note": "Prevents subtle schema drift errors where analogous endpoints expose different content fields (e.g., `message` vs `recording`/`transcript`).",
+                    "source": {
+                        "task_id": "771d8fc_2",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00160",
+                    "content": "For destructive endpoints (DELETE/cancel/remove), verify the documented success response shape before coding confirmation logic. Don\u2019t assume a standard `{deleted: true}`/status boolean exists; some APIs return only a human-readable `message`. Base success checks on the actual schema (or on HTTP/exception behavior) and adjust downstream branching accordingly.",
+                    "note": "Prevents downstream code from keying off invented deletion-confirmation fields when delete endpoints return only a message.",
+                    "source": {
+                        "task_id": "771d8fc_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00185",
+                    "content": "For auth/login APIs, don\u2019t assume standard endpoints (e.g., POST /login) or a minimal token response. During docs lookup, verify the exact request path and the complete success payload (e.g., `access_token` plus `token_type`) and plan how you will construct the Authorization header accordingly before making any authenticated calls.",
+                    "note": "Prevents failures caused by assuming conventional login URLs and ignoring token metadata required for later requests.",
+                    "source": {
+                        "task_id": "302c169_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                }
+            ],
+            "wrong_action_or_failure_mode": [
+                {
+                    "skill_id": "sk-00045",
+                    "content": "When looking up an API doc for an app, don\u2019t guess the endpoint name. First call the app-level API listing (e.g., show_api_descriptions for that app) and then use an exact api_name from the returned list with show_api_doc.",
+                    "note": "Avoid docs lookup failures caused by non-existent/incorrect api_name; enumerate available APIs before drilling into a specific doc.",
+                    "source": {
+                        "task_id": "2a163ab_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "wrong_action_or_failure_mode"
+                    }
+                },
+                {
+                    "skill_id": "sk-00052",
+                    "content": "Separate \u201cdocs lookup\u201d calls from \u201cruntime app\u201d calls: use apis.api_docs.show_api_doc/show_api_descriptions to inspect interfaces, and only expect AttributeError/missing-method failures when calling apis.<app> methods. If unsure whether an API exists, confirm via api_docs first before assuming the client lacks the method.",
+                    "note": "Avoid wrong failure-mode predictions caused by mixing up api_docs inspection with app client invocation.",
+                    "source": {
+                        "task_id": "2a163ab_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "wrong_action_or_failure_mode"
+                    }
+                },
+                {
+                    "skill_id": "sk-00069",
+                    "content": "Before running a docs_lookup action, explicitly predict a docs-shaped response (parameters/response_schemas) and avoid expecting runtime variables or fetched records. If you need to inspect actual data (e.g., a notes list), do that in a separate step by printing the variable or calling the app\u2019s data API, not api_docs.",
+                    "note": "Prevents wrong failure-mode predictions caused by mixing up expected observation types (docs payload vs runtime data output).",
+                    "source": {
+                        "task_id": "29caf6f_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "wrong_action_or_failure_mode"
+                    }
+                }
+            ]
+        },
+        "auth": {
+            "safe_abstraction": [
+                {
+                    "skill_id": "sk-00004",
+                    "content": "After a successful auth/login call, persist the returned auth artifact (e.g., access_token and token_type) and explicitly thread it into subsequent API calls; don\u2019t treat the response as just a schema placeholder.",
+                    "note": "Auth safe-abstraction: concrete tokens matter as environment state for the next steps.",
+                    "source": {
+                        "task_id": "82e2fac_1",
+                        "primary_board": "auth",
+                        "diff_category": "safe_abstraction"
+                    }
+                },
+                {
+                    "skill_id": "sk-00134",
+                    "content": "After login, use the returned auth fields exactly as provided (especially token_type casing) when forming Authorization headers; if you must normalize, do so explicitly and verify the API\u2019s expected format rather than assuming 'bearer' lowercase works everywhere.",
+                    "note": "Auth safe-abstraction: minor formatting details like token_type casing can cause downstream auth mismatches.",
+                    "source": {
+                        "task_id": "76f2c72_3",
+                        "primary_board": "auth",
+                        "diff_category": "safe_abstraction"
+                    }
+                }
+            ],
+            "schema_or_name_mismatch": [
+                {
+                    "skill_id": "sk-00119",
+                    "content": "In auth steps, don\u2019t assume the login call will return/display an access_token even if docs show one. After calling login, explicitly verify how the environment exposes authenticated state (e.g., inspect the returned object type/keys if available, or confirm via a follow-up \u201cwhoami/show_account\u201d call) before using a presumed token in subsequent requests.",
+                    "note": "Schema/name mismatch: predicted a concrete token payload but the environment only provided a generic success signal; requires verifying where auth artifacts actually appear.",
+                    "source": {
+                        "task_id": "b7a9ee9_2",
+                        "primary_board": "auth",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                }
+            ],
+            "missing_decisive_information": [
+                {
+                    "skill_id": "sk-00014",
+                    "content": "After any auth/credentials call (login, token fetch, or stored-password retrieval), don\u2019t treat a generic \u201cExecution successful\u201d as evidence you have the needed secret. Explicitly surface and validate the returned payload (e.g., print/serialize the object, check expected keys/record counts, and persist it in a variable). If the environment doesn\u2019t display the payload, re-query with an appropriate show/status endpoint or adjust the code to return/print the data before proceeding.",
+                    "note": "Auth steps and credential fetches can appear to succeed while the decisive secret fields aren\u2019t actually visible/confirmed; always force the payload to be surfaced and validated before using it downstream.",
+                    "source": {
+                        "task_id": "82e2fac_2",
+                        "primary_board": "auth",
+                        "diff_category": "missing_decisive_information"
+                    }
+                },
+                {
+                    "skill_id": "sk-00187",
+                    "content": "When retrieving stored credentials (e.g., a password vault/list), assume it may contain multiple accounts. Always enumerate/inspect the full returned list, then explicitly select the credential by a stable identifier (e.g., account_name/app) and verify it\u2019s unique/non-empty before using it for a login call.",
+                    "note": "Auth steps often hinge on choosing the right credential from a multi-account result; treating it as a single-item response can hide decisive options and lead to wrong downstream logins.",
+                    "source": {
+                        "task_id": "302c169_2",
+                        "primary_board": "auth",
+                        "diff_category": "missing_decisive_information"
+                    }
+                },
+                {
+                    "skill_id": "sk-00192",
+                    "content": "In auth/credential steps, don\u2019t assume that assigning a return value (or evaluating a variable) will surface secrets in the environment UI. Force rendering explicitly (e.g., `print(passwords)`, `repr(passwords)`, or JSON serialization) and confirm you can actually see the expected fields before proceeding to login/token use.",
+                    "note": "Some environments replace rich returns with a generic 'Execution successful' unless you explicitly print/serialize; without forced display you may miss decisive credential data.",
+                    "source": {
+                        "task_id": "e7a10f8_1",
+                        "primary_board": "auth",
+                        "diff_category": "missing_decisive_information"
+                    }
+                }
+            ],
+            "value_or_state_mismatch": [
+                {
+                    "skill_id": "sk-00012",
+                    "content": "Don\u2019t infer returned credentials/state from generic 'Execution successful' feedback. If the environment doesn\u2019t echo values, explicitly force-display and validate the returned object (e.g., `print(passwords)`, inspect type/len, and check expected keys like `account_name`/`password`) before selecting an entry or proceeding to login.",
+                    "note": "Auth value/state mismatch: execution status may not show the underlying credential payload; proactively render and sanity-check the data you intend to use.",
+                    "source": {
+                        "task_id": "82e2fac_2",
+                        "primary_board": "auth",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00043",
+                    "content": "Treat credentials and account inventories as opaque runtime state: after fetching a password/credential list, enumerate available `account_name`s and select the needed entry from the returned data rather than assuming which accounts exist or using placeholder/dummy values.",
+                    "note": "Auth value/state mismatch: don\u2019t predict credential contents or available accounts; derive them from the actual credential store response before proceeding.",
+                    "source": {
+                        "task_id": "2a163ab_1",
+                        "primary_board": "auth",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00188",
+                    "content": "When using login responses, don\u2019t assume auth metadata formatting (e.g., token_type casing like \"bearer\" vs \"Bearer\"). Treat token payload fields as opaque runtime values; if you need an Authorization header, either use the exact returned token_type or normalize safely (e.g., case-insensitive compare) rather than hardcoding.",
+                    "note": "Auth value/state mismatch: token_type and similar fields may differ in casing/format; avoid hardcoded expectations that can break downstream auth.",
+                    "source": {
+                        "task_id": "302c169_2",
+                        "primary_board": "auth",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                }
+            ],
+            "wrong_action_or_failure_mode": [
+                {
+                    "skill_id": "sk-00013",
+                    "content": "When retrieving credentials/tokens into a variable, don\u2019t assume the environment will display the object on bare evaluation; explicitly `print(...)` (or otherwise serialize) the variable to confirm the actual account/password/token values before proceeding.",
+                    "note": "Auth steps can return only a generic 'Execution successful' unless you explicitly print/inspect the retrieved credential object.",
+                    "source": {
+                        "task_id": "82e2fac_2",
+                        "primary_board": "auth",
+                        "diff_category": "wrong_action_or_failure_mode"
+                    }
+                },
+                {
+                    "skill_id": "sk-00071",
+                    "content": "When an app login returns 401 Invalid credentials, verify the required username identifier type from the app\u2019s login docs (e.g., phone_number vs email) and cross-check against account/profile/contact data before retrying; don\u2019t assume the same username string works across different apps.",
+                    "note": "Avoid repeated failed auth attempts caused by using the wrong identifier field (email vs phone number) rather than an incorrect password.",
+                    "source": {
+                        "task_id": "29caf6f_1",
+                        "primary_board": "auth",
+                        "diff_category": "wrong_action_or_failure_mode"
+                    }
+                },
+                {
+                    "skill_id": "sk-00089",
+                    "content": "When pulling a credential from a returned list (e.g., supervisor passwords), don\u2019t assume `next(...)` will fail or succeed; first inspect/print the available `account_name` values and use a safe lookup pattern (e.g., default in `next(..., None)` with an explicit error message) before attempting login.",
+                    "note": "Prevents incorrect expectation of StopIteration and makes auth prerequisites/diagnosis clearer when a credential is missing or misnamed.",
+                    "source": {
+                        "task_id": "afc0fce_3",
+                        "primary_board": "auth",
+                        "diff_category": "wrong_action_or_failure_mode"
+                    }
+                }
+            ]
+        },
+        "read_fetch": {
+            "safe_abstraction": [
+                {
+                    "skill_id": "sk-00097",
+                    "content": "When fetching a free-form text record (notes, descriptions) that you\u2019ll parse or act on next, inspect and preserve the exact observed formatting (line structure, delimiters like '=>', bullet markers, currency/number formats) and base parsing/next queries on that concrete structure rather than an abstract \u201clist of items\u201d assumption.",
+                    "note": "Safe abstraction during read/fetch can hide formatting details that become decisive for reliable parsing and follow-on actions.",
+                    "source": {
+                        "task_id": "22cc237_1",
+                        "primary_board": "read_fetch",
+                        "diff_category": "safe_abstraction"
+                    }
+                }
+            ],
+            "schema_or_name_mismatch": [
+                {
+                    "skill_id": "sk-00041",
+                    "content": "When validating fetched data via printed/JSON-serialized output, don\u2019t assume dict key types are preserved (e.g., int keys may appear as strings). If downstream logic depends on key types, explicitly normalize/convert keys (cast to int or str consistently) before lookups, merges, or comparisons.",
+                    "note": "Read/fetch schema mismatch: observation display can stringify dict keys; normalize key types to avoid silent misses.",
+                    "source": {
+                        "task_id": "692c77d_3",
+                        "primary_board": "read_fetch",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00070",
+                    "content": "When you need to confirm fetched results (counts, previews, extracted lists), don\u2019t assume the environment will display the value of the last Python expression; explicitly `print(...)` (or JSON-serialize) the specific variables you need to observe (e.g., `len(items)`, a small slice, key fields) so the observation contains the concrete data you will reason over.",
+                    "note": "Read/fetch schema mismatch: execution output may not include return values; explicitly print/serialize the evidence you need.",
+                    "source": {
+                        "task_id": "29caf6f_1",
+                        "primary_board": "read_fetch",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                }
+            ],
+            "missing_decisive_information": [
+                {
+                    "skill_id": "sk-00075",
+                    "content": "In read/fetch steps, explicitly surface the decision signals you\u2019ll use downstream (e.g., total fetched, filtered-match count, and a few IDs/keys of matches). When the goal is to avoid duplicates (e.g., checking if requests already exist), don\u2019t proceed on \u201ccall succeeded\u201d; confirm with printed counts + representative records that the relevant subset is truly empty/non-empty.",
+                    "note": "Extends beyond \u201cprint something\u201d to \u201cprint the specific evidence needed to decide whether to create/update/skip (especially for duplicate checks).\u201d",
+                    "source": {
+                        "task_id": "29caf6f_3",
+                        "primary_board": "read_fetch",
+                        "diff_category": "missing_decisive_information"
+                    }
+                },
+                {
+                    "skill_id": "sk-00127",
+                    "content": "When fetching a file list to drive downstream parsing, immediately surface the decision-critical breakdown: total count plus counts/examples by relevant subdirectory/prefix and by extension/format (e.g., .txt vs .pdf). Use this to narrow the next reads to the target subset instead of proceeding from a generic \u201csuccess\u201d signal.",
+                    "note": "Helps avoid context explosion and wrong follow-up reads by summarizing file enumerations into actionable filters (category/year/extension) before opening files.",
+                    "source": {
+                        "task_id": "76f2c72_1",
+                        "primary_board": "read_fetch",
+                        "diff_category": "missing_decisive_information"
+                    }
+                },
+                {
+                    "skill_id": "sk-00135",
+                    "content": "After fetching a large list of paths/records that will drive further reads, immediately compute and display the next-step selection cues from the returned values (e.g., unique years, categories inferred from path prefixes, and counts per group), then derive the exact filtered list you intend to open. Don\u2019t proceed based on \u201csuccess\u201d or raw length alone.",
+                    "note": "Helps avoid missing decisive information and prevents context explosion by turning a big enumeration into an actionable, minimal subset (e.g., by year/category) before opening files.",
+                    "source": {
+                        "task_id": "76f2c72_3",
+                        "primary_board": "read_fetch",
+                        "diff_category": "missing_decisive_information"
+                    }
+                },
+                {
+                    "skill_id": "sk-00161",
+                    "content": "In read/fetch code, don\u2019t rely on an environment\u2019s generic \u201cExecution successful\u201d feedback. Explicitly print or return the decision-critical results you computed (e.g., match count, list of IDs to act on, and a small sample record), especially after loops/pagination, so the next step can verify whether there\u2019s anything to delete/update.",
+                    "note": "Prevents missing decisive information when the environment doesn\u2019t automatically display expression values; forces observable evidence (counts/IDs) before acting.",
+                    "source": {
+                        "task_id": "771d8fc_3",
+                        "primary_board": "read_fetch",
+                        "diff_category": "missing_decisive_information"
+                    }
+                },
+                {
+                    "skill_id": "sk-00171",
+                    "content": "When fetching a document/receipt to drive later actions, don\u2019t predict/record only a generic success message. Immediately surface the decision-critical fields from the fetched content (e.g., total amount, date range, payee/account) or print a short targeted excerpt around those fields, so downstream steps can compute splits and create requests without rereading the whole file.",
+                    "note": "Missing decisive information in read/fetch often comes from not extracting the key values from retrieved unstructured text.",
+                    "source": {
+                        "task_id": "3c13f5a_1",
+                        "primary_board": "read_fetch",
+                        "diff_category": "missing_decisive_information"
+                    }
+                },
+                {
+                    "skill_id": "sk-00199",
+                    "content": "After any read/fetch call that you will use for a downstream decision, explicitly force visibility of the returned payload (e.g., print the object or key fields like ids/titles) rather than assuming the environment will display it. If the environment only reports \"Execution successful\", add a targeted print/extract step (counts + a few representative records/fields) to confirm the fetch actually returned the expected structured data.",
+                    "note": "Prevents missing decisive information when notebook-style expression output isn\u2019t auto-rendered and the environment collapses observations to generic success messages.",
+                    "source": {
+                        "task_id": "c901732_3",
+                        "primary_board": "read_fetch",
+                        "diff_category": "missing_decisive_information"
+                    }
+                }
+            ],
+            "value_or_state_mismatch": [
+                {
+                    "skill_id": "sk-00037",
+                    "content": "When fetching data in loops (pagination), explicitly print/log the decisive outputs (e.g., total count, last page size, and a small sample/keys). Don\u2019t assume the environment will display expression results\u2014use print/return so the observation contains the actual fetched state.",
+                    "note": "Value/state mismatches can come from not surfacing computed results; make fetched state observable with explicit logging before acting on it.",
+                    "source": {
+                        "task_id": "692c77d_3",
+                        "primary_board": "read_fetch",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00054",
+                    "content": "When pulling records from an external store (contacts, feeds, lists), don\u2019t assume the result set is empty; do a probe fetch (e.g., first page with a reasonable page_limit) and inspect the count/sample before forming expectations or deciding next steps. If pagination is involved, track page sizes and stop conditions to validate you\u2019ve reached the end.",
+                    "note": "Reduces value/state mismatches caused by ungrounded assumptions about whether data exists; encourages quick state grounding before planning.",
+                    "source": {
+                        "task_id": "2a163ab_3",
+                        "primary_board": "read_fetch",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00058",
+                    "content": "When merging entities fetched from multiple sources (e.g., song library + albums + playlists), don\u2019t guess the overlap. Explicitly compute and log: |A|, |B|, |A\u2229B|, |A\\B|, and the resulting |A\u222aB| (optionally print a small sample of IDs from each set) before planning or predicting counts.",
+                    "note": "Prevents value/state mismatches caused by ungrounded assumptions about deduplication and cross-source overlap when building a unique inventory.",
+                    "source": {
+                        "task_id": "6104387_1",
+                        "primary_board": "read_fetch",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00062",
+                    "content": "When enriching a collection by expanding nested references (e.g., album.song_ids -> show_song), don\u2019t assume most referenced items are already in your base set. Do a quick overlap check: expand a small sample (first N references) and compute how many are new vs already-seen before predicting final counts or deciding whether the expansion is \u201cworth it\u201d.",
+                    "note": "Prevents value/state mismatches caused by untested assumptions about cross-endpoint overlap when deduplicating and unioning inventories.",
+                    "source": {
+                        "task_id": "6104387_2",
+                        "primary_board": "read_fetch",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00063",
+                    "content": "When fetching a user\u2019s playlist library (or any endpoint with optional filters), don\u2019t assume how many items you\u2019ll get or which subset you\u2019re seeing. Do a quick scope probe: fetch the first page with each relevant filter value (e.g., is_public=None/True/False), log page sizes, and confirm pagination termination behavior before predicting totals or using counts in planning.",
+                    "note": "Value/state mismatches often come from hidden scope defaults (public vs private) and unexpected pagination; verify filter coverage and page behavior early.",
+                    "source": {
+                        "task_id": "6104387_2",
+                        "primary_board": "read_fetch",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00099",
+                    "content": "When fetching transactions with a free-text `query`, don\u2019t assume it uniquely identifies the target event. First narrow the scope with decisive filters (e.g., min/max date around the event, direction, specific counterparty email if known), then post-filter the returned set by matching expected amounts/participants/descriptions before concluding who has already paid.",
+                    "note": "Prevents value/state mismatches where broad search terms pull in many historical transactions and lead to incorrect counts or mistaken \u201calready paid\u201d conclusions.",
+                    "source": {
+                        "task_id": "22cc237_1",
+                        "primary_board": "read_fetch",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00104",
+                    "content": "When retrieving free-text records (notes, descriptions), don\u2019t predict or assume the specific entities/amounts they contain. Always read the exact returned `content`, then explicitly parse it into a structured list (e.g., bullet lines -> {person, amount}) and validate the parse (non-empty, expected count/format, amounts parseable) before using it for downstream actions like payment requests.",
+                    "note": "Value/state mismatches often come from treating unstructured text as if it matched an expected template; ground actions in parsed-and-validated fetched content.",
+                    "source": {
+                        "task_id": "22cc237_2",
+                        "primary_board": "read_fetch",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00128",
+                    "content": "When computing totals from unstructured files (bills/statements), don\u2019t assume a standard template (e.g., 'Amount Due'). First open 1\u20132 representative files and identify the actual amount field labels and date range patterns used (e.g., 'Total Amount', line-item sums). Then implement parsing against those observed markers, with a fallback/validation step (e.g., amount parsed is numeric and matches sum of line items if present) before aggregating across many files.",
+                    "note": "Prevents value/state mismatches caused by predicting document structure instead of grounding parsing/aggregation in the fetched content.",
+                    "source": {
+                        "task_id": "76f2c72_1",
+                        "primary_board": "read_fetch",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00130",
+                    "content": "When retrieving files from a directory to compute a time-bounded total, don\u2019t assume the folder is flat, current-year, or single-format. First probe the directory structure (list immediate subdirectories and a small sample of filenames), identify where the target category lives (e.g., an 'internet' subfolder), and check the observed date range. Then re-fetch with narrowing filters (e.g., directory_path to the specific subfolder and/or substring like '2023-' plus entry_type='files') before opening/parsing files.",
+                    "note": "Prevents value/state mismatches from ungrounded expectations about file organization, year coverage, and file types when fetching bill documents.",
+                    "source": {
+                        "task_id": "76f2c72_2",
+                        "primary_board": "read_fetch",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00139",
+                    "content": "When a downstream decision depends on record/file timestamps (e.g., organizing by month/year), don\u2019t assume the dates. Fetch metadata for a small sample first, then compute a quick distribution (e.g., count by YYYY-MM, plus min/max created_at) to confirm the observed time range and which items fall into each bucket before applying bulk moves.",
+                    "note": "Prevents value/state mismatches from guessing timestamps; grounds date-based grouping in observed metadata.",
+                    "source": {
+                        "task_id": "34d9492_1",
+                        "primary_board": "read_fetch",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00142",
+                    "content": "When validating a directory listing after file operations, don\u2019t assume stable ordering or exact path formatting. Normalize paths (e.g., strip trailing slashes, consistent absolute vs '~/' resolution) and compare sets/counts (optionally grouped by parent directory) rather than relying on the first N lines or a predicted order.",
+                    "note": "Prevents value/state mismatches caused by nondeterministic listing order and minor path formatting differences (e.g., directories returned with trailing '/'), especially after moves/copies.",
+                    "source": {
+                        "task_id": "34d9492_1",
+                        "primary_board": "read_fetch",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00144",
+                    "content": "When fetching a directory listing as the basis for organizing/moving files, don\u2019t assume the directory already contains the target subfolders or that entries are bare filenames. Treat the listing as ground truth: (1) check whether any subdirectories exist (e.g., re-list with entry_type='directories'); (2) note whether entries are absolute paths vs '~/'; and (3) if grouping depends on dates, immediately fetch/inspect metadata for a small sample and compute counts by YYYY-MM before creating folders or doing bulk moves.",
+                    "note": "Prevents value/state mismatches from assuming folder structure and path format; ensures date-based organization is grounded in observed file metadata.",
+                    "source": {
+                        "task_id": "34d9492_2",
+                        "primary_board": "read_fetch",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00146",
+                    "content": "When you need to organize/group files by time, never assume timestamps are from the current year or reflect \u201crecent\u201d creation. Fetch `created_at/updated_at` for a small, representative sample first, then compute/print min/max and counts by YYYY-MM to confirm the actual time range before deciding buckets or doing bulk moves.",
+                    "note": "Prevents value/state mismatches from inventing timestamp values; grounds date-based organization in observed file metadata distributions.",
+                    "source": {
+                        "task_id": "34d9492_2",
+                        "primary_board": "read_fetch",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00151",
+                    "content": "When fetching a directory listing to plan file moves/organization, don\u2019t assume canonical filenames (e.g., IMG_0001.jpg), extensions, or small counts. Treat the listing as inventory: record the total count, note whether paths are absolute vs '~/'-relative, and inspect a small sample to learn naming/extension patterns before writing glob/substring filters or predicting what files exist.",
+                    "note": "Prevents value/state mismatches caused by inventing file inventories; grounds subsequent filtering and move operations in the observed filenames, extensions, and path format.",
+                    "source": {
+                        "task_id": "34d9492_3",
+                        "primary_board": "read_fetch",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00156",
+                    "content": "When a decision depends on per-item metadata (e.g., release_date, created_at), don\u2019t predict the exact values. Fetch the fields for a small sample first and treat the returned dates as ground truth; only then build/print the removal list based on those observed values.",
+                    "note": "Reduces value/state mismatches by preventing invented record attributes (especially timestamps) from driving planning or bulk actions.",
+                    "source": {
+                        "task_id": "ce359b5_1",
+                        "primary_board": "read_fetch",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00170",
+                    "content": "When searching a file store by a broad substring (e.g., 'electric'), assume you may get many historical matches and mixed formats. Treat the results as candidates: (1) narrow scope by directory_path and/or date-bearing substrings; (2) sort/select the most likely file by filename patterns or metadata; and (3) open/preview 1\u20132 top candidates to confirm it\u2019s the right document before using it downstream (e.g., extracting an amount or sending payment requests).",
+                    "note": "Prevents value/state mismatches caused by assuming a unique, specific file will be returned from a fuzzy directory search.",
+                    "source": {
+                        "task_id": "3c13f5a_1",
+                        "primary_board": "read_fetch",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00179",
+                    "content": "When fetching a note to update a single checklist item, don\u2019t assume you know the note\u2019s current lines. Always read the returned `content` as ground truth, then parse it into structured items (e.g., extract each line\u2019s checkbox state and label) and confirm the target item exists (and whether it\u2019s already marked done) before constructing an update.",
+                    "note": "Prevents value/state mismatches from hallucinating free-text note contents and supports reliable downstream edits to specific checklist entries.",
+                    "source": {
+                        "task_id": "cf6abd2_1",
+                        "primary_board": "read_fetch",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00183",
+                    "content": "When using a free-text search endpoint to find a specific target record (e.g., a particular note), assume the query may return many unrelated matches and pinned items may appear first. Treat results as candidates: (1) scan titles/tags/updated_at to shortlist likely matches; (2) if multiple candidates remain, fetch full details (e.g., show_note to read content) for the top few; (3) only proceed to update after confirming you have the uniquely intended record.",
+                    "note": "Prevents value/state mismatches where broad search terms return a mixed set and the agent implicitly assumes the first/expected item is present or uniquely identified.",
+                    "source": {
+                        "task_id": "cf6abd2_3",
+                        "primary_board": "read_fetch",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00191",
+                    "content": "When you fetch a list you will later edit (e.g., alarms), don\u2019t predict specific counts/IDs/times/labels. Treat the first successful fetch as the authoritative inventory: compute the total count from the returned pages, and summarize the key discriminators you\u2019ll use downstream (e.g., unique labels, enabled vs disabled counts, and any null/empty variants like repeat_days being null vs []). Normalize/guard against nullable fields before filtering or constructing update actions.",
+                    "note": "Prevents value/state mismatches from hallucinated inventories and avoids downstream bugs when returned records contain null/empty variations in important fields.",
+                    "source": {
+                        "task_id": "302c169_3",
+                        "primary_board": "read_fetch",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00194",
+                    "content": "When using a catalog `search_*` endpoint with a free-text `query`, don\u2019t assume the first/only result is the target or that returned IDs/metadata match expectations. Treat results as candidates: (1) scan for exact title matches and other discriminators (artists, release_date, track count/song_ids length); (2) if multiple plausible matches exist, fetch full details with `show_*` for the top candidates using their IDs; (3) only then proceed to downstream steps (e.g., iterating song_ids to compare listen counts).",
+                    "note": "Prevents value/state mismatches caused by hallucinating unique search hits and acting on the wrong entity; encourages disambiguation via observed fields and follow-up fetch by ID.",
+                    "source": {
+                        "task_id": "c901732_1",
+                        "primary_board": "read_fetch",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00197",
+                    "content": "When selecting an item by an extreme of a fetched metric (e.g., max play_count), don\u2019t predict the winner. Fetch the metric for all candidates (or a sufficient subset), then log a small table of {id, title, metric} and the computed top-1/top-k so the decision is grounded in observed values before taking the downstream action (e.g., play).",
+                    "note": "Prevents value/state mismatches caused by inventing which record has the highest/lowest metric; makes the decisive per-item fields observable before acting.",
+                    "source": {
+                        "task_id": "c901732_2",
+                        "primary_board": "read_fetch",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                }
+            ],
+            "wrong_action_or_failure_mode": [
+                {
+                    "skill_id": "sk-00006",
+                    "content": "When fetching data, don\u2019t assume the environment will echo the value of the last expression\u2014explicitly `print()`/log key artifacts (e.g., page length, sample item, total accumulated count) and add a clear pagination stop condition (e.g., break when `len(page) < page_limit` or when an explicit `next_page`/`has_more` flag ends) so the observation contains the records you need.",
+                    "note": "Prevents read/fetch steps from producing uninformative 'Execution successful' observations and avoids infinite/ambiguous pagination loops.",
+                    "source": {
+                        "task_id": "82e2fac_1",
+                        "primary_board": "read_fetch",
+                        "diff_category": "wrong_action_or_failure_mode"
+                    }
+                },
+                {
+                    "skill_id": "sk-00131",
+                    "content": "When doing a read/fetch step, predict the *environment\u2019s* response (returned object shape and/or a snippet of printed content), not a restatement of your code. If you need the observation to include specific fields/text, explicitly `print()` those parts (e.g., `print(resp.keys())`, `print(resp['content'][:N])`) so the run produces inspectable evidence.",
+                    "note": "Prevents ungrounded expectations where the 'predicted observation' is just code/comments rather than what the environment will actually return or print.",
+                    "source": {
+                        "task_id": "76f2c72_2",
+                        "primary_board": "read_fetch",
+                        "diff_category": "wrong_action_or_failure_mode"
+                    }
+                },
+                {
+                    "skill_id": "sk-00147",
+                    "content": "When logging/printing results of a read/fetch (e.g., Counters or dicts) make sure the object you print is JSON-serializable for the environment: avoid tuple keys or complex objects. Convert keys to strings (e.g., `month_counts_str = {f\"{y}-{m:02d}\": c for (y,m),c in month_counts.items()}`) or print `list(month_counts.items())` so the observation doesn\u2019t fail.",
+                    "note": "Prevents losing environment feedback due to print/serialization errors while inspecting fetched metadata.",
+                    "source": {
+                        "task_id": "34d9492_2",
+                        "primary_board": "read_fetch",
+                        "diff_category": "wrong_action_or_failure_mode"
+                    }
+                },
+                {
+                    "skill_id": "sk-00181",
+                    "content": "After any search/list/paginated fetch that is supposed to produce an object for the next step, explicitly verify it exists before dereferencing (e.g., `if not item: print('not found', page_index, len(page)); ...`) and print minimal diagnostics (page size, a few candidate titles/ids) so you can tell whether the query/pagination found the target before calling detail endpoints.",
+                    "note": "Prevents wrong-action failures like `NoneType` subscripting and makes it clear whether the read step actually retrieved the needed record.",
+                    "source": {
+                        "task_id": "cf6abd2_2",
+                        "primary_board": "read_fetch",
+                        "diff_category": "wrong_action_or_failure_mode"
+                    }
+                }
+            ]
+        },
+        "local_reasoning": {
+            "safe_abstraction": [
+                {
+                    "skill_id": "sk-00132",
+                    "content": "In this environment, local Python execution often returns only a generic status (e.g., 'Execution successful.') and does not echo expressions or imports; if you need to observe a value/state for the next step, use explicit output (e.g., print(...) or structured logging) rather than assuming evaluation results will be shown.",
+                    "note": "Avoid REPL-style assumptions about local code output; make intermediate values observable when needed.",
+                    "source": {
+                        "task_id": "76f2c72_2",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "safe_abstraction"
+                    }
+                }
+            ],
+            "schema_or_name_mismatch": [
+                {
+                    "skill_id": "sk-00048",
+                    "content": "When running multi-statement code blocks, don\u2019t assume the environment will echo the final expression value; explicitly `print(...)` (or otherwise emit) key computed results (counts, samples, booleans) needed for downstream decisions.",
+                    "note": "Some environments only report a generic success message unless values are explicitly printed/emitted, causing apparent schema/output mismatches during local reasoning.",
+                    "source": {
+                        "task_id": "2a163ab_1",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00114",
+                    "content": "Don\u2019t assume printed/returned Python container types will be preserved by the environment (e.g., tuples may serialize as lists). Before downstream use, validate/normalize the in-memory shape you\u2019ll iterate over (e.g., coerce `[(...)]` vs `[[...]]` with `tuple(x)`/`list(x)` or unpack by position) rather than keying logic off the pretty-printed representation.",
+                    "note": "Prevents schema/type surprises caused by environment JSON serialization of local values (tuple->list) during local reasoning.",
+                    "source": {
+                        "task_id": "22cc237_3",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00125",
+                    "content": "When inspecting local Python dicts via `print(...)`, don\u2019t assume key types are preserved in the displayed output: environments often JSON-serialize results (e.g., int keys become strings). For any downstream logic, rely on the in-memory object (or explicitly normalize with `{int(k): v for k, v in d.items()}` / `{str(k): v ...}`) rather than the printed representation.",
+                    "note": "Prevents schema/type mismatches caused by JSON serialization of printed dicts (key stringification, JSON booleans) during local reasoning.",
+                    "source": {
+                        "task_id": "b7a9ee9_3",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                }
+            ],
+            "missing_decisive_information": [
+                {
+                    "skill_id": "sk-00008",
+                    "content": "In local reasoning steps, don\u2019t assume the environment will display expression results; explicitly print/return the decisive intermediate values needed for the next action (e.g., list of candidate records, IDs, count, or a small structured preview) so you can verify you selected the right entities before making downstream calls.",
+                    "note": "Some environments only show 'Execution successful' unless you explicitly print; always surface decision-critical intermediates.",
+                    "source": {
+                        "task_id": "82e2fac_1",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "missing_decisive_information"
+                    }
+                }
+            ],
+            "value_or_state_mismatch": [
+                {
+                    "skill_id": "sk-00015",
+                    "content": "When computing a min/max (or other aggregate) over fetched items, validate the result by inspecting a small table of (id, key metric) for several items (or sorting by the metric) to confirm you\u2019re aggregating the intended field across the full set and not skipping items due to missing/None values.",
+                    "note": "Prevents value/state surprises from unverified local aggregation logic (e.g., min play_count not matching expectations).",
+                    "source": {
+                        "task_id": "82e2fac_2",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00029",
+                    "content": "After paginating into an in-memory list, sanity-check that pagination is complete and stable before assuming counts or item order: record how many items each page returns, confirm the last page is empty/short, and inspect a few IDs/titles from the start and end (don\u2019t rely on `items[0]` being a particular object unless the API specifies sorting).",
+                    "note": "Prevents value/state surprises caused by incomplete pagination or incorrect assumptions about returned ordering.",
+                    "source": {
+                        "task_id": "692c77d_1",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00030",
+                    "content": "When doing batch mutations and reporting summary counts, don\u2019t predict counts from assumptions\u2014record an explicit per-item outcome (e.g., append (id, action_taken, previous_rating) or collect lists for created/updated/skipped/errors) and compute the final totals from those recorded outcomes; optionally sample a few items after the loop to confirm state matches the recorded action.",
+                    "note": "Prevents value/state mismatches where printed summaries reflect expectations rather than the actual per-item results of the batch operation.",
+                    "source": {
+                        "task_id": "692c77d_1",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00033",
+                    "content": "Don\u2019t predict concrete counts or example-shaped placeholder records for an in-memory collection that was populated from an API; instead, explicitly inspect `len(items)` and a small, representative sample (e.g., first 3 and last 3 IDs/titles) before basing any downstream logic on assumed size/content.",
+                    "note": "Prevents value/state mismatches where the agent acts on imagined list contents or assumed library size rather than the actual fetched state.",
+                    "source": {
+                        "task_id": "692c77d_2",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00038",
+                    "content": "When deriving a union/set (e.g., unique IDs aggregated across records), don\u2019t assume the resulting count or members; instead, spot-check the derivation by printing a small per-record breakdown (record_id -> song_ids length + a few IDs) and confirm the union size changes as expected before using the derived set for further logic.",
+                    "note": "Prevents value/state mismatches where downstream steps are based on an imagined or unvalidated derived ID set rather than what the fetched records actually contain.",
+                    "source": {
+                        "task_id": "692c77d_3",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00039",
+                    "content": "When deriving a target set via intersections/differences (e.g., `A & B`, `A - B`), don\u2019t assume which IDs will be included; print/inspect the immediate inputs (sizes and a few sorted IDs from each set) and, if needed, a small membership table for candidate IDs to confirm the derived membership before using it for downstream actions.",
+                    "note": "Prevents value/state mismatches where downstream logic is based on imagined set-intersection membership rather than the actual computed result.",
+                    "source": {
+                        "task_id": "692c77d_3",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00040",
+                    "content": "After building an in-memory mapping from fetched/API-derived data (e.g., `id -> record/tuple`), immediately sanity-check the structure: print a few items plus `type()` of keys and values (and nested fields) to confirm key types (int vs str) and value shape (dict vs tuple/list) match what downstream code expects; normalize (e.g., cast keys to int, standardize value schema) before further filtering/updating.",
+                    "note": "Prevents value/state mismatches caused by silent type/shape drift in locally constructed dicts/lists (e.g., stringified IDs or unexpected list/tuple/dict forms).",
+                    "source": {
+                        "task_id": "692c77d_3",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00072",
+                    "content": "After building an in-memory result list from an API search query, don\u2019t assume the query actually filtered the results: quickly validate relevance by sampling several items and checking that key fields (e.g., title/tags) match the intended constraint; if many don\u2019t, adjust the query (or switch to tag filtering / fetch full items and locally filter) before using counts or selecting candidates.",
+                    "note": "Prevents value/state mismatches where downstream steps rely on a search term behaving like a strict filter when the API may return loosely related or unfiltered items.",
+                    "source": {
+                        "task_id": "29caf6f_2",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00076",
+                    "content": "When a contact search returns multiple results, don\u2019t assume the intended person is the only match. Before using a phone_number, disambiguate by inspecting a compact list of candidates (contact_id, full name, phone_number, email/relationship) and pick the best match (or refine the query) rather than selecting the first/expected record.",
+                    "note": "Prevents acting on the wrong recipient when search results are broader/noisier than expected.",
+                    "source": {
+                        "task_id": "29caf6f_3",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00079",
+                    "content": "Before computing \u201clast N days\u201d windows with `date.today()`/`now()`, first verify the environment\u2019s current date/time (e.g., print `date.today()` or fetch server time) and base your min/max boundaries on that observed value; don\u2019t assume the runtime clock matches real-world/current dates.",
+                    "note": "Prevents value/state mismatches when the execution environment uses a simulated or fixed clock, which would otherwise make time filters silently wrong.",
+                    "source": {
+                        "task_id": "afc0fce_1",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00080",
+                    "content": "When filtering/joining two in-memory datasets (e.g., transactions filtered by a contacts-derived email set), don\u2019t assume the resulting membership or count. Build a quick validation view: for several candidate records print (record_id, key field, `key in set?`) and also spot-check the set itself (size + a few members). If results are surprising, inspect both sides (e.g., whether a sender email exists in contacts, normalization like lowercasing, and whether the relationship filter returned all intended contacts) before proceeding to mutations.",
+                    "note": "Prevents value/state mismatches caused by unverified local join/filter logic across API-derived datasets.",
+                    "source": {
+                        "task_id": "afc0fce_1",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00100",
+                    "content": "When using an API \u201csearch\u201d endpoint to identify a person/recipient, assume results may be broad or weakly filtered (dozens+ candidates). Always inspect `len(results)` and sample a few entries, then apply a deliberate disambiguation step (e.g., restrict to friends/frequent contacts, match exact email/full name, or intersect with known data like prior transactions) before choosing a single target.",
+                    "note": "Prevents value/state surprises and wrong-recipient actions caused by treating person search as an exact lookup.",
+                    "source": {
+                        "task_id": "22cc237_1",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00101",
+                    "content": "When locally filtering API-derived search results by a predicate like \u201cfield is non-null / truthy\u201d (e.g., `friends_since`, `status`, flags), don\u2019t assume it will narrow the list. First compute a quick breakdown (total, count where field is None vs non-None) and sample a few rows showing the field value, then refine the predicate (e.g., exact email/name match, intersect with known prior transactions) before using the filtered set for downstream actions.",
+                    "note": "Prevents value/state surprises and wrong-recipient choices caused by assuming nullness/truthiness filters are selective without validating the actual distribution in returned results.",
+                    "source": {
+                        "task_id": "22cc237_1",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00103",
+                    "content": "When building an in-memory mapping intended to cover a known target set (e.g., person->(name,email)), explicitly validate coverage before proceeding: compare `expected_keys - mapping.keys()` and `mapping.keys() - expected_keys`, and if any are missing, print a short explanation per missing key (e.g., \u201cno matching record found in source list\u201d) and fall back to another lookup path rather than assuming the key exists.",
+                    "note": "Prevents downstream actions (like creating requests) from silently skipping intended targets due to incomplete locally-derived mappings.",
+                    "source": {
+                        "task_id": "22cc237_1",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00108",
+                    "content": "In environments that often respond with only a generic status (e.g., \u201cExecution successful.\u201d), don\u2019t assume an expression\u2019s value will be shown. If you need to validate a locally-computed dict/list (recipients, payloads, filtered sets), explicitly `print()` it or print a compact summary (len + a few items) before taking any downstream/irreversible action.",
+                    "note": "Prevents value/state mismatches where the agent believes it has visually confirmed a local result (recipient selection, request payload) but the environment didn\u2019t actually reveal it.",
+                    "source": {
+                        "task_id": "22cc237_2",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00111",
+                    "content": "When an API returns a broad activity feed (e.g., transactions) and you only need records for a specific event, don\u2019t reason from the unfiltered in-memory list. First create and inspect a narrowed subset using explicit filters (query/description match, counterparty email, and/or a date window), then base counts and downstream actions on that subset (print `len(filtered)` and a few sample rows to confirm relevance).",
+                    "note": "Prevents value/state mismatches where the agent assumes the fetched list is already small/relevant and misestimates which items correspond to the current task.",
+                    "source": {
+                        "task_id": "22cc237_3",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00112",
+                    "content": "When a people-search endpoint returns unexpectedly large results, first verify the query is actually influencing the output (compare overlap between two different queries; check whether top results contain the query token). If overlap is high or relevance is low, don\u2019t pick from the raw search list\u2014switch to stronger disambiguation (friends-only search, exact email match, or intersect candidates with known counterparties from prior transactions) before choosing recipients.",
+                    "note": "Prevents value/state surprises and wrong-recipient actions when search endpoints behave like broad directory lookups rather than precise filters.",
+                    "source": {
+                        "task_id": "22cc237_3",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00115",
+                    "content": "Don\u2019t predict concrete values for locally-computed time boundaries or aggregates (e.g., `start_date`, per-recipient totals, grand totals) based on assumptions. Before reporting or making downstream decisions, explicitly inspect the computed intermediates (print the boundary inputs like `date.today()`/computed `start_date`, plus `len()` and a small sample of the per-entity subtotals) so any surprises come from observed state, not imagined placeholders.",
+                    "note": "Prevents value/state mismatches where the agent assumes zeros/default dates for aggregates that depend on the environment\u2019s clock and fetched transaction data.",
+                    "source": {
+                        "task_id": "d0b1f43_1",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00136",
+                    "content": "When computing totals by parsing semi-structured text across multiple files/records, don\u2019t assume repeated/constant per-item values. After the loop, explicitly inspect the computed per-item breakdown (e.g., month -> parsed amount) and, if needed, also log what substring/regex match produced each amount before reporting the final aggregate.",
+                    "note": "Prevents value/state mismatches where the agent reports imagined uniform subtotals rather than the actually parsed per-file amounts.",
+                    "source": {
+                        "task_id": "76f2c72_3",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00148",
+                    "content": "Before acting on a time-based assumption (e.g., \u201call items are from this month/year\u201d or mapping months to categories), compute and inspect basic timestamp diagnostics from the in-memory list: `len(items)`, `min(date)`, `max(date)`, and a small histogram (e.g., year-month counts). If the distribution differs from expectations, adjust the grouping/filter logic before proceeding to moves/updates.",
+                    "note": "Prevents value/state mismatches where downstream organization decisions are based on imagined timestamp distributions rather than observed created_at/updated_at values.",
+                    "source": {
+                        "task_id": "34d9492_2",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00174",
+                    "content": "When a file/directory search returns multiple plausible matches (e.g., monthly bills), don\u2019t assume it found the single intended file. First inspect `len(results)` and a short sorted preview, then apply an explicit selection rule (e.g., choose the max by year-month in filename, or filter to the most recent N) before calling `show_file`/parsing.",
+                    "note": "Prevents value/state mismatches where downstream logic reads/parses the wrong document because the agent assumed the search would return one canonical match.",
+                    "source": {
+                        "task_id": "3c13f5a_2",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00190",
+                    "content": "When working with an in-memory dict/list that originated from an API response, don\u2019t fill in or assume \u201ctypical default\u201d field values (e.g., snooze=0, created_at placeholder). Instead, inspect/print the specific fields you will rely on (or `print(record)` once) and treat missing fields as unknown\u2014only use values you actually observed or explicitly set via an update call.",
+                    "note": "Prevents value/state mismatches caused by mentally substituting expected defaults for API-returned fields.",
+                    "source": {
+                        "task_id": "302c169_2",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00200",
+                    "content": "When you\u2019ve already fetched an object from an API into memory (dict with nested lists), don\u2019t assume placeholder/example values for nested fields (e.g., URLs, titles, IDs). Explicitly `print()`/inspect the real object (or a compact projection like song `(id, title, artist_ids)`) and base downstream selection logic on those observed values.",
+                    "note": "Prevents value/state mismatches where the agent reasons from imagined example-shaped content instead of the actual in-memory API result.",
+                    "source": {
+                        "task_id": "c901732_3",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00201",
+                    "content": "For API-derived items with engagement metrics (e.g., play_count/like_count), don\u2019t assume defaults (like 0) or fabricate example values. Explicitly inspect the metric values (print a small (id,title,metric) table or sort by the metric) before making decisions like \u201cmost listened,\u201d and base selections on the observed numbers.",
+                    "note": "Prevents value/state mismatches where the agent predicts placeholder metric values instead of grounding choices in the actual returned counters.",
+                    "source": {
+                        "task_id": "c901732_3",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00202",
+                    "content": "When you already have an API-returned object in memory (e.g., a dict like `top_song` from `show_song`), don\u2019t predict or restate its non-aggregated fields from schema examples/defaults. If you need specifics (duration, dates, genre, counts, links), explicitly `print()`/inspect the stored object (or re-fetch by id) and treat those concrete values as authoritative for downstream decisions and reporting.",
+                    "note": "Prevents value/state mismatches caused by hallucinating placeholder/example field values for data that was actually fetched.",
+                    "source": {
+                        "task_id": "c901732_3",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                }
+            ],
+            "wrong_action_or_failure_mode": [
+                {
+                    "skill_id": "sk-00034",
+                    "content": "Don\u2019t rely on bare expression evaluation to reveal in-memory values; explicitly emit the needed details (e.g., `print(var)`, `print(json.dumps(var, indent=2))`, or targeted summaries like counts/keys/samples) so the environment returns actionable content instead of a generic success message.",
+                    "note": "Local inspection can silently produce non-informative feedback; force explicit output when you need the value for later decisions.",
+                    "source": {
+                        "task_id": "692c77d_2",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "wrong_action_or_failure_mode"
+                    }
+                },
+                {
+                    "skill_id": "sk-00049",
+                    "content": "Before parsing environment-returned date/time strings with strict parsers (e.g., `date.fromisoformat`), first surface the exact string value/format (print it or check a sample) and then parse with the matching `strptime` pattern or a small fallback list of patterns.",
+                    "note": "Avoid assuming ISO formatting for returned dates; confirm actual format to prevent runtime parse failures in local computations.",
+                    "source": {
+                        "task_id": "2a163ab_2",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "wrong_action_or_failure_mode"
+                    }
+                },
+                {
+                    "skill_id": "sk-00061",
+                    "content": "When the sandbox blocks standard helpers (e.g., `io.StringIO`, `open`, `csv.writer`, or similar), don\u2019t keep trying wrappers that depend on those functions. Switch to pure in-memory string construction (manual CSV escaping/quoting) and pass the final string directly to the environment\u2019s file-write API.",
+                    "note": "Some environments disallow not only file handles but also stdlib convenience functions; treat these restriction errors as a signal to implement minimal formatting manually.",
+                    "source": {
+                        "task_id": "6104387_1",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "wrong_action_or_failure_mode"
+                    }
+                },
+                {
+                    "skill_id": "sk-00093",
+                    "content": "When inspecting values in this environment, assume `print(...)` may JSON-serialize its arguments; avoid printing objects containing non-serializable types (e.g., datetime/FakeDatetime). Instead print primitive projections (strings/ints) or convert fields first (`dt.isoformat()`, `str(dt)`) before printing or dumping to JSON.",
+                    "note": "Prevents inspection-time failures caused by the sandbox print/serialization behavior; print only serializable summaries when debugging local state.",
+                    "source": {
+                        "task_id": "27e1026_2",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "wrong_action_or_failure_mode"
+                    }
+                },
+                {
+                    "skill_id": "sk-00095",
+                    "content": "Assume third-party Python packages may be unavailable in the sandbox. For common tasks (e.g., datetime parsing), prefer stdlib equivalents (`datetime.fromisoformat`, `strptime`) and only add non-stdlib imports after confirming they\u2019re permitted (or be ready with a no-dependency fallback).",
+                    "note": "Prevents execution failures from disallowed modules during local reasoning.",
+                    "source": {
+                        "task_id": "27e1026_3",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "wrong_action_or_failure_mode"
+                    }
+                }
+            ]
+        }
+    }
+}
