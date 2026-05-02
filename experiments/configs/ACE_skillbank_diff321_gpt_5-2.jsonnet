@@ -1,9 +1,11 @@
 local project_home_path = std.extVar("APPWORLD_PROJECT_PATH");
 local experiment_prompts_path = project_home_path + "/experiments/prompts";
 local experiment_playbooks_path = project_home_path + "/experiments/playbooks";
+local experiment_configs_path = project_home_path + "/experiments/configs";
+local experiment_code_path = project_home_path + "/experiments/code";
 
 local generator_model_config = {
-    "name": "gpt-5.4",
+    "name": "gpt-5.2",
     "provider": "OpenAI",
     "base_url": "https://api.zwlbnot.cn/v1",
     "temperature": 0,
@@ -35,7 +37,7 @@ local generator_model_config = {
                 "verbose": false,
             },
             "generator_prompt_file_path": experiment_prompts_path + "/appworld_react_generator_prompt.txt",
-            "trained_playbook_file_path": experiment_playbooks_path + "/appworld_prediction_diff_skillbank_diff321_playbook.txt",
+            "trained_playbook_file_path": experiment_playbooks_path + "/appworld_skillbank_train_gpt5-2_playbook.txt",  
             "ignore_multiple_calls": true,
             "max_prompt_length": 800000,
             "max_output_length": 400000,
@@ -44,7 +46,7 @@ local generator_model_config = {
             "max_cost_per_task": 10,
             "log_lm_calls": false,
         },
-        "dataset": "test_normal_difficulty_2",
+        "dataset": "test_normal_difficulty_3",
         "skip_existing_outputs": true,
     }
 }
