@@ -1,15 +1,15 @@
 {
     "version": "v1",
-    "skill_id_counter": 44,
+    "skill_id_counter": 48,
     "buckets": {
         "docs_lookup": {
             "safe_abstraction": [
                 {
-                    "skill_id": "sk-00005",
+                    "skill_id": "sk-00001",
                     "content": "During API doc lookup, verify and retain the complete success response schema (including extra fields and precise types/formats), not just the minimal fields needed to identify the endpoint.",
                     "note": "Safe abstraction in docs lookup can hide useful response details for downstream decisions.",
                     "source": {
-                        "task_id": "82e2fac_2",
+                        "task_id": "template",
                         "primary_board": "docs_lookup",
                         "diff_category": "safe_abstraction"
                     }
@@ -18,30 +18,10 @@
             "schema_or_name_mismatch": [
                 {
                     "skill_id": "sk-00002",
-                    "content": "When consulting API docs, treat the returned path and response schema as the source of truth: copy exact endpoint/method and only rely on fields explicitly documented, rather than inferring extra keys or route patterns.",
-                    "note": "Prevents schema/name mismatches in docs lookup by grounding follow-up actions in exact documented interface details.",
+                    "content": "During docs lookup, use the documentation response schema verbatim: confirm exact field names and structure in both endpoint listings and per-endpoint docs (including parameter names and success/failure response keys) before planning calls.",
+                    "note": "Addresses repeated name/schema drift from doc outputs and prevents propagating invented interface fields.",
                     "source": {
-                        "task_id": "82e2fac_1",
-                        "primary_board": "docs_lookup",
-                        "diff_category": "schema_or_name_mismatch"
-                    }
-                },
-                {
-                    "skill_id": "sk-00009",
-                    "content": "When you call an API-description/listing endpoint, treat the returned list as authoritative: use exact API names from the response and avoid inventing, renaming, or omitting operations before selecting the next doc call.",
-                    "note": "Prevents schema/name mismatches caused by guessing operation names from memory instead of grounding in the actual API catalog.",
-                    "source": {
-                        "task_id": "692c77d_1",
-                        "primary_board": "docs_lookup",
-                        "diff_category": "schema_or_name_mismatch"
-                    }
-                },
-                {
-                    "skill_id": "sk-00014",
-                    "content": "When reading an API doc, extract the complete callable contract before proceeding: include all optional filter/pagination parameters (with defaults/constraints) and mirror response field names/types exactly (including pluralized or nested fields), rather than collapsing them into guessed generic keys.",
-                    "note": "Prevents schema drift after docs lookup by forcing exact parameter and response-shape grounding.",
-                    "source": {
-                        "task_id": "2a163ab_2",
+                        "task_id": "template",
                         "primary_board": "docs_lookup",
                         "diff_category": "schema_or_name_mismatch"
                     }
@@ -49,31 +29,41 @@
             ],
             "missing_decisive_information": [
                 {
-                    "skill_id": "sk-00001",
-                    "content": "When reading API docs, capture the full contract (required params, method/path, success fields, and failure schema) before planning the next action; do not assume omitted fields are irrelevant.",
-                    "note": "Prevents downstream mistakes from partial doc parsing in docs lookup.",
+                    "skill_id": "sk-00003",
+                    "content": "During API doc lookup, extract the full callable contract before proceeding: endpoint/method, required params, success fields, and failure schema. Do not assume omitted response fields are absent; verify them explicitly from the docs before planning the next step.",
+                    "note": "Make docs lookup actionable by requiring complete interface capture, especially response variants and fields needed for robust follow-up.",
                     "source": {
-                        "task_id": "82e2fac_1",
+                        "task_id": "template",
                         "primary_board": "docs_lookup",
                         "diff_category": "missing_decisive_information"
                     }
                 },
                 {
-                    "skill_id": "sk-00028",
-                    "content": "Even for similarly named library endpoints, verify resource-specific optional filters and item schema fields (including nested objects and ID lists) from the doc itself before planning follow-up queries.",
-                    "note": "Prevents assuming uniform schema across songs/albums/playlists and missing decisive parameters or fields.",
+                    "skill_id": "sk-00033",
+                    "content": "After listing available APIs, choose the next `api_name` exactly from that returned list and fetch its doc before planning arguments; do not substitute guessed synonyms (e.g., request/pay/charge variants) or inferred field names.",
+                    "note": "Prevents schema/name mismatches by grounding the callable identity in the observed API index first.",
                     "source": {
-                        "task_id": "27e1026_3",
+                        "task_id": "22cc237_1",
                         "primary_board": "docs_lookup",
                         "diff_category": "missing_decisive_information"
                     }
                 },
                 {
-                    "skill_id": "sk-00034",
-                    "content": "When you query API descriptions, treat the returned list as a capability inventory: read/record all available endpoints before selecting one, rather than assuming a small subset of familiar actions.",
-                    "note": "Prevents missing decisive options during docs lookup by enforcing full endpoint enumeration first.",
+                    "skill_id": "sk-00038",
+                    "content": "When calling an API index/description listing, treat the returned list as decision-critical: read and account for all listed endpoints before choosing the next doc to inspect, rather than proceeding from a guessed subset.",
+                    "note": "Prevents missing decisive options during docs lookup by grounding next-step selection in the complete observed endpoint list.",
                     "source": {
                         "task_id": "b7a9ee9_3",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "missing_decisive_information"
+                    }
+                },
+                {
+                    "skill_id": "sk-00043",
+                    "content": "When inspecting list/retrieval API docs, explicitly enumerate optional filtering/search/sorting parameters (and their defaults/interaction rules), not just required auth and pagination fields, before planning fetch calls.",
+                    "note": "Prevents missing decision-critical controls in docs lookup that affect result completeness and ordering.",
+                    "source": {
+                        "task_id": "229360a_1",
                         "primary_board": "docs_lookup",
                         "diff_category": "missing_decisive_information"
                     }
@@ -81,31 +71,41 @@
             ],
             "value_or_state_mismatch": [
                 {
-                    "skill_id": "sk-00011",
+                    "skill_id": "sk-00004",
                     "content": "Even when two apps expose similarly named endpoints (like login), verify app-specific parameter semantics in the docs (e.g., email vs phone_number) before constructing request inputs.",
                     "note": "Avoid cross-app value assumptions during interface lookup.",
                     "source": {
-                        "task_id": "2a163ab_1",
+                        "task_id": "template",
                         "primary_board": "docs_lookup",
                         "diff_category": "value_or_state_mismatch"
                     }
                 },
                 {
-                    "skill_id": "sk-00017",
-                    "content": "For action endpoints, verify the exact documented success payload before planning downstream reads or parsing fields; do not assume state fields (e.g., counts/ids) will be returned unless the schema explicitly includes them.",
-                    "note": "Prevents relying on imagined response values during docs lookup.",
+                    "skill_id": "sk-00025",
+                    "content": "When API docs show a response field as a generic type (e.g., \"message\": \"string\"), do not predict or hard-code exact literal text; treat only the presence/type as guaranteed unless an enum or fixed value is explicitly documented.",
+                    "note": "Avoid overcommitting to undocumented response literals during docs lookup.",
                     "source": {
-                        "task_id": "2a163ab_3",
+                        "task_id": "2a163ab_2",
                         "primary_board": "docs_lookup",
                         "diff_category": "value_or_state_mismatch"
                     }
                 },
                 {
-                    "skill_id": "sk-00036",
-                    "content": "When consulting API docs, copy exact documented interface values (e.g., path strings and key identifiers) rather than inferring format from similar APIs or naming patterns.",
-                    "note": "Prevents value-level mistakes in docs lookup such as slash vs underscore path assumptions.",
+                    "skill_id": "sk-00040",
+                    "content": "During docs lookup, do not predict or rely on guessed endpoint paths/descriptions; read and use the exact returned interface values (e.g., route strings) as authoritative for subsequent calls.",
+                    "note": "Prevents value-level drift in documented interface details.",
                     "source": {
                         "task_id": "34d9492_1",
+                        "primary_board": "docs_lookup",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00044",
+                    "content": "When docs specify valid values for a parameter (e.g., sort_by attributes), treat that set as exact for that endpoint and do not copy extra values from similar endpoints.",
+                    "note": "Prevents value-level drift in endpoint-specific allowed option lists during docs lookup.",
+                    "source": {
+                        "task_id": "229360a_3",
                         "primary_board": "docs_lookup",
                         "diff_category": "value_or_state_mismatch"
                     }
@@ -113,19 +113,19 @@
             ],
             "wrong_action_or_failure_mode": [
                 {
-                    "skill_id": "sk-00018",
-                    "content": "Before calling show_api_doc for a specific endpoint, first list the app\u2019s available APIs (e.g., show_api_descriptions) and use an exact name from that list; if a doc lookup fails, re-enumerate names instead of guessing variants.",
-                    "note": "Avoid wrong-action failures in docs lookup caused by assumed API names.",
+                    "skill_id": "sk-00005",
+                    "content": "Do not assume a callable exists from its likely name. After a wrong action, it's better to first confirm the exact API names from the app's API list, and prefer separate or incremental doc lookups so one invalid name does not prevent collecting other docs.",
+                    "note": "Docs lookup wrong-action pattern: guessed API names can cause lookup failure and block the rest of the inspection.",
                     "source": {
-                        "task_id": "6104387_1",
+                        "task_id": "template",
                         "primary_board": "docs_lookup",
                         "diff_category": "wrong_action_or_failure_mode"
                     }
                 },
                 {
-                    "skill_id": "sk-00022",
-                    "content": "When using documentation endpoints (e.g., show_api_doc), expect interface metadata (parameters, method, response schema), not business data results; use docs output to plan the next API call rather than to estimate fetched values.",
-                    "note": "Prevents wrong-mode expectations by distinguishing doc inspection from data retrieval.",
+                    "skill_id": "sk-00028",
+                    "content": "Match your expected output to the function type you are calling: doc-inspection APIs return interface metadata (parameters/schema), not business data results. Use docs calls to learn how to make the subsequent data call, then predict data from that runtime call instead.",
+                    "note": "Docs lookup wrong-action pattern: confused documentation endpoint output with data-fetch output.",
                     "source": {
                         "task_id": "6104387_3",
                         "primary_board": "docs_lookup",
@@ -137,22 +137,43 @@
         "auth": {
             "safe_abstraction": [
                 {
-                    "skill_id": "sk-00003",
-                    "content": "When retrieving shared account credentials, treat the returned list as authoritative and search/filter it for the exact target app before using a password, rather than assuming which accounts will be present.",
-                    "note": "Safe abstraction in auth: avoid assumptions about credential list composition.",
+                    "skill_id": "sk-00006",
+                    "content": "When obtaining credentials or a login response, inspect the full returned structure and retain any account identifiers, token metadata, or session fields that may matter for the next authenticated call, not just a guessed password or a bare token string.",
+                    "note": "Auth safe abstraction: the fuller credential or login payload can matter for the following step.",
                     "source": {
-                        "task_id": "82e2fac_1",
+                        "task_id": "template",
                         "primary_board": "auth",
                         "diff_category": "safe_abstraction"
                     }
                 }
             ],
-            "schema_or_name_mismatch": [],
+            "schema_or_name_mismatch": [
+                {
+                    "skill_id": "sk-00007",
+                    "content": "Before attempting login, verify the exact auth input schema from docs and map stored account data to those concrete parameter names and identifier types instead of guessing generic fields like username, email, or password.",
+                    "note": "Push the next step to ground auth calls in the real login schema.",
+                    "source": {
+                        "task_id": "template",
+                        "primary_board": "auth",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                }
+            ],
             "missing_decisive_information": [
                 {
-                    "skill_id": "sk-00012",
-                    "content": "When retrieving credentials from a password store, treat the response as the source of truth: enumerate/search the full returned accounts and select the credential by exact account_name before attempting login.",
-                    "note": "Avoid assuming which accounts are present or using placeholder credentials; gather decisive auth inputs from actual returned data.",
+                    "skill_id": "sk-00008",
+                    "content": "If the available credential or profile information does not yet identify the exact account to use, fetch the missing identity detail first and only then attempt login, rather than retrying auth with partially matched credentials.",
+                    "note": "Auth often fails because the decisive account identifier was never resolved.",
+                    "source": {
+                        "task_id": "template",
+                        "primary_board": "auth",
+                        "diff_category": "missing_decisive_information"
+                    }
+                },
+                {
+                    "skill_id": "sk-00023",
+                    "content": "After retrieving saved credentials, parse the returned account list and extract the exact username/password pair needed for the target app before attempting login; do not proceed based on assumed or placeholder credentials.",
+                    "note": "Auth failures and delays often come from treating credential fetch output as generic instead of grounding login in the concrete returned mapping.",
                     "source": {
                         "task_id": "2a163ab_2",
                         "primary_board": "auth",
@@ -162,9 +183,19 @@
             ],
             "value_or_state_mismatch": [
                 {
-                    "skill_id": "sk-00006",
-                    "content": "In credential-retrieval steps, ground follow-up actions in the exact returned account/password pair (selected by account_name) rather than assumed placeholders or partial lists.",
-                    "note": "Auth value/state mismatch from assuming credential contents instead of using observed values.",
+                    "skill_id": "sk-00009",
+                    "content": "After an auth-related call, reuse the exact returned access artifact fields and values as environment truth for later requests, rather than normalizing, renaming, or inventing token or session details.",
+                    "note": "Later authenticated calls should be grounded in the exact returned auth state.",
+                    "source": {
+                        "task_id": "template",
+                        "primary_board": "auth",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00021",
+                    "content": "When retrieving stored credentials, treat the returned account/password pairs as the source of truth: locate the exact target account entry and pass that exact password to login, rather than assuming placeholder or remembered values.",
+                    "note": "Ground pre-login credential selection in actual returned auth artifacts.",
                     "source": {
                         "task_id": "82e2fac_2",
                         "primary_board": "auth",
@@ -172,17 +203,39 @@
                     }
                 }
             ],
-            "wrong_action_or_failure_mode": []
+            "wrong_action_or_failure_mode": [
+                {
+                    "skill_id": "sk-00010",
+                    "content": "When a login or access step fails, do not keep retrying variants blindly. Use the failure to check prerequisites such as the correct credential source, identifier type, and any required auth or setup step before the next action.",
+                    "note": "Turn auth failure into prerequisite checking instead of repeated blind retries.",
+                    "source": {
+                        "task_id": "template",
+                        "primary_board": "auth",
+                        "diff_category": "wrong_action_or_failure_mode"
+                    }
+                }
+            ]
         },
         "read_fetch": {
-            "safe_abstraction": [],
+            "safe_abstraction": [
+                {
+                    "skill_id": "sk-00011",
+                    "content": "A successful read step may still be too shallow for the next decision. Inspect representative returned records, pagination metadata, and any omitted fields before treating the fetch as complete.",
+                    "note": "Read/fetch safe abstraction: a shallow success can still hide decisive details.",
+                    "source": {
+                        "task_id": "template",
+                        "primary_board": "read_fetch",
+                        "diff_category": "safe_abstraction"
+                    }
+                }
+            ],
             "schema_or_name_mismatch": [
                 {
-                    "skill_id": "sk-00031",
-                    "content": "Before using search results to choose target users, inspect the API\u2019s response schema and parse the returned fields exactly as provided (e.g., separate name parts, email, relationship indicators) instead of assuming a simplified object shape.",
-                    "note": "Prevent read/fetch errors from assumed response field names/structure in user lookup flows.",
+                    "skill_id": "sk-00012",
+                    "content": "Use the actual response structure from the fetch result - real keys, nesting, and id formats - in downstream code instead of assuming common field names like items, results, id, or content.",
+                    "note": "Push the agent to reason from the concrete fetch schema instead of guessed field names.",
                     "source": {
-                        "task_id": "22cc237_3",
+                        "task_id": "template",
                         "primary_board": "read_fetch",
                         "diff_category": "schema_or_name_mismatch"
                     }
@@ -190,29 +243,19 @@
             ],
             "missing_decisive_information": [
                 {
-                    "skill_id": "sk-00027",
-                    "content": "When answering a comparison question over a library (newest/oldest/highest), fetch all relevant candidate records and compute the result from returned fields before finalizing; do not rely on placeholder output or partial evidence.",
-                    "note": "Missing decisive information in read/fetch aggregate selection tasks.",
+                    "skill_id": "sk-00013",
+                    "content": "When the next step depends on selecting or comparing records, gather a broad enough result set first, including additional pages when needed, and then filter locally by the decisive criteria.",
+                    "note": "Encourage broad retrieval before making a narrow downstream choice.",
                     "source": {
-                        "task_id": "27e1026_2",
+                        "task_id": "template",
                         "primary_board": "read_fetch",
                         "diff_category": "missing_decisive_information"
                     }
                 },
                 {
-                    "skill_id": "sk-00029",
-                    "content": "Before creating outbound requests or messages, fetch existing pending/outstanding records and compare key fields (recipient, amount, note/description) so you only create missing items and avoid duplicates.",
-                    "note": "Missing decisive information in read/fetch before write actions; use current state checks to prevent duplicate requests.",
-                    "source": {
-                        "task_id": "22cc237_1",
-                        "primary_board": "read_fetch",
-                        "diff_category": "missing_decisive_information"
-                    }
-                },
-                {
-                    "skill_id": "sk-00043",
-                    "content": "When using search to decide whether to create a new item, fetch enough pages and then explicitly filter for exact match fields (such as exact title and correct owner) before concluding it already exists or needs creation.",
-                    "note": "Missing decisive information in read/fetch existence checks before create actions.",
+                    "skill_id": "sk-00046",
+                    "content": "When searching for an existing object by name returns many matches, collect decisive disambiguators (e.g., your own account identity and exact-name match) and filter on them before deciding create-vs-reuse.",
+                    "note": "Avoid treating broad search results as decisive; fetch identity/context fields needed to isolate the correct record.",
                     "source": {
                         "task_id": "e3d6c94_2",
                         "primary_board": "read_fetch",
@@ -222,29 +265,19 @@
             ],
             "value_or_state_mismatch": [
                 {
-                    "skill_id": "sk-00004",
-                    "content": "When collecting paginated records, treat the fetched pages as the source of truth for totals and state; continue until the API\u2019s stop condition is met, then base counts/decisions on the accumulated results rather than expected volume.",
-                    "note": "Avoid value/state assumptions during paginated read_fetch.",
+                    "skill_id": "sk-00014",
+                    "content": "Base downstream decisions on the values actually returned by the environment, including ids, statuses, timestamps, and counts, rather than on expected record state or guessed matches.",
+                    "note": "Read/fetch decisions should be grounded in observed state, not expected state.",
                     "source": {
-                        "task_id": "82e2fac_1",
+                        "task_id": "template",
                         "primary_board": "read_fetch",
                         "diff_category": "value_or_state_mismatch"
                     }
                 },
                 {
-                    "skill_id": "sk-00007",
-                    "content": "When selecting an item by a metric (min/max play_count, latest timestamp, highest score), derive the result strictly from the returned values across the full candidate set and do not assume which item will win before comparison.",
-                    "note": "Ground ranking/argmin decisions in observed per-item state, not expected identities.",
-                    "source": {
-                        "task_id": "82e2fac_2",
-                        "primary_board": "read_fetch",
-                        "diff_category": "value_or_state_mismatch"
-                    }
-                },
-                {
-                    "skill_id": "sk-00010",
-                    "content": "When fetching records in a loop for specific target IDs (especially with optional filters like user_email), verify each returned record\u2019s key IDs and keep only records that match the current target/candidate set before building decision maps.",
-                    "note": "Guard aggregation against unexpected or cross-item records during iterative read/fetch.",
+                    "skill_id": "sk-00022",
+                    "content": "When building an id-to-record map from filtered list endpoints, verify each returned record\u2019s key (for example, song_id) matches the current query target set and ignore or separately handle out-of-scope records before using the map for decisions.",
+                    "note": "Prevent state mismatches from assuming all filtered fetch results belong to the current target ids.",
                     "source": {
                         "task_id": "692c77d_1",
                         "primary_board": "read_fetch",
@@ -252,89 +285,79 @@
                     }
                 },
                 {
-                    "skill_id": "sk-00013",
-                    "content": "When an API returns a list of categorical labels (e.g., relationship types, statuses, tags), do not assume the exact vocabulary in advance; first read the returned set and then map task terms to those observed labels before filtering or deciding.",
-                    "note": "Ground category-based filtering in observed enum values, not expected wording.",
-                    "source": {
-                        "task_id": "2a163ab_2",
-                        "primary_board": "read_fetch",
-                        "diff_category": "value_or_state_mismatch"
-                    }
-                },
-                {
-                    "skill_id": "sk-00015",
-                    "content": "When collecting records across multiple filter values that may overlap, treat the combined result as a union and deduplicate by a stable key (for example, record ID) before counting, matching, or using the set for next-step queries.",
-                    "note": "Prevent double-counting and repeated entities when merging multi-filter fetch results.",
-                    "source": {
-                        "task_id": "2a163ab_2",
-                        "primary_board": "read_fetch",
-                        "diff_category": "value_or_state_mismatch"
-                    }
-                },
-                {
-                    "skill_id": "sk-00016",
-                    "content": "For volatile state reads (for example current time/date, live balance, or status), treat the API response as the sole source of truth and avoid assuming concrete values in advance; parse and use the returned format before applying time-based filters or comparisons.",
-                    "note": "Ground time/state-dependent decisions in freshly fetched values, not expected timestamps.",
-                    "source": {
-                        "task_id": "2a163ab_2",
-                        "primary_board": "read_fetch",
-                        "diff_category": "value_or_state_mismatch"
-                    }
-                },
-                {
-                    "skill_id": "sk-00021",
-                    "content": "When aggregating items fetched through multiple parent collections (e.g., direct library plus albums/playlists that reference the same items), assume heavy overlap and compute final counts only after building a deduplicated union keyed by stable IDs from responses.",
-                    "note": "Ground merged-collection totals in observed ID-level union, not expected additive counts.",
-                    "source": {
-                        "task_id": "6104387_2",
-                        "primary_board": "read_fetch",
-                        "diff_category": "value_or_state_mismatch"
-                    }
-                },
-                {
-                    "skill_id": "sk-00023",
-                    "content": "When a fetched record contains free-form text (notes, descriptions, message bodies), do not assume the exact contents; read and parse the returned text to extract the required output fields before replying or transforming.",
-                    "note": "Ground downstream outputs in actual fetched text content, not expected wording or list items.",
-                    "source": {
-                        "task_id": "29caf6f_1",
-                        "primary_board": "read_fetch",
-                        "diff_category": "value_or_state_mismatch"
-                    }
-                },
-                {
                     "skill_id": "sk-00024",
-                    "content": "When searching people/contacts by a broad query (e.g., first name), treat results as a candidate list and explicitly disambiguate the target using additional observed fields (phone number, relationship, full name, recent message context) before sending or updating anything.",
-                    "note": "Avoid assuming a unique person match from name-only search results.",
+                    "content": "When aggregating records from multiple filtered fetches, expect overlap between filters and deduplicate by a stable identifier (for example, contact_id) before using the result set downstream.",
+                    "note": "Prevents value/state errors from duplicated entities when unioning paginated or multi-filter reads.",
                     "source": {
-                        "task_id": "29caf6f_2",
+                        "task_id": "2a163ab_2",
                         "primary_board": "read_fetch",
                         "diff_category": "value_or_state_mismatch"
                     }
                 },
                 {
-                    "skill_id": "sk-00033",
-                    "content": "When iterating through fetched item details to filter by a categorical field (e.g., genre/status/type), do not assume the filtered set will be empty or non-empty in advance; compute membership strictly from observed field values in each response and base downstream actions on that derived set.",
-                    "note": "Ground fetch-time category filtering outcomes in returned record values, not prior expectations.",
+                    "skill_id": "sk-00026",
+                    "content": "When merging entities from multiple read endpoints, track unique-id count after each source (and optionally new ids added) instead of assuming expected overlap; use these observed increments for downstream expectations.",
+                    "note": "Prevents value/count mismatches during multi-source union fetches by grounding expectations in incremental observed state.",
                     "source": {
-                        "task_id": "b7a9ee9_2",
+                        "task_id": "6104387_1",
                         "primary_board": "read_fetch",
                         "diff_category": "value_or_state_mismatch"
                     }
                 },
                 {
-                    "skill_id": "sk-00035",
-                    "content": "When listing files from a directory for later aggregation, treat the returned paths as the source of truth and derive selection rules from observed structure (actual subdirectories, filename date formats, and extensions) before reading or summing; do not assume expected file names or a flat layout.",
-                    "note": "Ground filesystem record selection in observed path patterns before downstream totals.",
+                    "skill_id": "sk-00032",
+                    "content": "When using name-based search endpoints, assume results may be broad or loosely matched; collect candidates, then explicitly filter/score by decision-relevant fields (for example exact name components, friendship status, or known transaction links) before selecting targets for next actions.",
+                    "note": "Prevents value/state mistakes from treating raw search output as exact identity matches.",
                     "source": {
-                        "task_id": "76f2c72_1",
+                        "task_id": "22cc237_1",
+                        "primary_board": "read_fetch",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00034",
+                    "content": "Treat text search results as candidate sets, not final targets: after collecting matches (and paginating as needed), shortlist by metadata and then fetch full records by id to confirm relevance before making downstream updates or requests.",
+                    "note": "Prevents value/state errors from acting on broad or loosely relevant search hits without record-level verification.",
+                    "source": {
+                        "task_id": "22cc237_2",
+                        "primary_board": "read_fetch",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00036",
+                    "content": "For fetched records that contain free-text fields (notes, descriptions, messages), treat the text as unknown until read verbatim from the response; do not infer specific names, amounts, or paid/unpaid status from the title or prior expectations before extracting structured data.",
+                    "note": "Prevents value/state mismatches caused by hallucinating record body content instead of grounding on returned text.",
+                    "source": {
+                        "task_id": "22cc237_3",
                         "primary_board": "read_fetch",
                         "diff_category": "value_or_state_mismatch"
                     }
                 },
                 {
                     "skill_id": "sk-00037",
-                    "content": "When a file-organization rule depends on time state (e.g., month created/modified), treat the directory list as inventory only; fetch per-file metadata and classify from observed timestamps before moving files, instead of inferring from filenames or expected counts.",
-                    "note": "For filesystem read/fetch, separate listing from metadata verification when decisions depend on dates.",
+                    "content": "When a history endpoint returns many valid records, treat them as candidates and explicitly filter to task-relevant matches (for example by counterparty identity, amount, time window, and description) before inferring status like \"already paid.\"",
+                    "note": "Prevents value/state mistakes from assuming fetched transaction history directly reflects the current task without reconciliation.",
+                    "source": {
+                        "task_id": "22cc237_3",
+                        "primary_board": "read_fetch",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00039",
+                    "content": "After recursive directory reads, treat returned paths as a mixed candidate pool and explicitly filter by task-relevant path segments (e.g., service folder, date window, file type) before opening files or aggregating values.",
+                    "note": "Prevents value/state mismatches from assuming expected file naming/layout instead of using observed directory structure.",
+                    "source": {
+                        "task_id": "76f2c72_2",
+                        "primary_board": "read_fetch",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00041",
+                    "content": "In filesystem organization tasks, treat directory listings as candidate paths only; do not assume expected filenames or counts from the prompt. First use the returned paths, then fetch per-file metadata (e.g., created/updated timestamps) needed to classify files before moving them.",
+                    "note": "Prevents value/state mismatches by grounding file grouping in observed listing + metadata rather than guessed file names.",
                     "source": {
                         "task_id": "34d9492_1",
                         "primary_board": "read_fetch",
@@ -342,9 +365,9 @@
                     }
                 },
                 {
-                    "skill_id": "sk-00039",
-                    "content": "When computing totals from nested fetches (e.g., parent records -> child details), validate that each child response actually contains the metric field you plan to aggregate; if the field is missing, treat the result as incomplete and inspect the child schema/alternate endpoint before making duration/count-based decisions.",
-                    "note": "Prevents silent zero totals from missing fields during multi-step read/fetch aggregation.",
+                    "skill_id": "sk-00042",
+                    "content": "When aggregating values from fetched records across endpoints, verify the exact response field names/units used for the metric (for example duration fields) before summing; if totals look implausible (e.g., non-empty list but zero total), inspect a sample raw record and adjust extraction.",
+                    "note": "Prevents value/state mismatches from using wrong keys during multi-step read aggregation.",
                     "source": {
                         "task_id": "b0a8eae_3",
                         "primary_board": "read_fetch",
@@ -352,19 +375,9 @@
                     }
                 },
                 {
-                    "skill_id": "sk-00041",
-                    "content": "Before batch file operations that depend on folder layout, list the immediate subdirectories at the exact target path and treat that inventory as authoritative; if expected source folders are missing or only output/staging folders appear, adjust scope (or re-check parent paths) before proceeding.",
-                    "note": "For filesystem read/fetch, verify actual top-level directory state before deriving batch targets.",
-                    "source": {
-                        "task_id": "7d7fbf6_1",
-                        "primary_board": "read_fetch",
-                        "diff_category": "value_or_state_mismatch"
-                    }
-                },
-                {
-                    "skill_id": "sk-00042",
-                    "content": "When listing directories for batch processing, validate path depth explicitly: list the target path, and if results show only a container/staging folder instead of expected work folders, re-list inside that returned folder (or move up one level) before selecting items to process.",
-                    "note": "Avoid wrong-scope filesystem operations by confirming parent vs child directory level from observed listings.",
+                    "skill_id": "sk-00045",
+                    "content": "In filesystem read steps, treat each directory listing as the source of truth for current structure and names: use the returned paths directly for subsequent compression/deletion loops, and do not infer expected subdirectories from the task text.",
+                    "note": "Prevents repeated value/state mismatches from guessing folder sets instead of chaining actions from observed listings.",
                     "source": {
                         "task_id": "7d7fbf6_2",
                         "primary_board": "read_fetch",
@@ -372,18 +385,51 @@
                     }
                 }
             ],
-            "wrong_action_or_failure_mode": []
+            "wrong_action_or_failure_mode": [
+                {
+                    "skill_id": "sk-00015",
+                    "content": "If a read returns empty, partial, or surprising results, broaden or verify the query first - such as filters, page index, or identifier assumptions - before switching to a write action or concluding the target data does not exist.",
+                    "note": "Unexpected read results should trigger query checking before action changes.",
+                    "source": {
+                        "task_id": "template",
+                        "primary_board": "read_fetch",
+                        "diff_category": "wrong_action_or_failure_mode"
+                    }
+                }
+            ]
         },
         "local_reasoning": {
-            "safe_abstraction": [],
-            "schema_or_name_mismatch": [],
+            "safe_abstraction": [
+                {
+                    "skill_id": "sk-00016",
+                    "content": "Before acting on a locally derived summary, keep the decisive supporting details visible - such as which records matched, tie cases, or boundary values - when those details could change the next step.",
+                    "note": "Local reasoning safe abstraction: concise summaries should still preserve decisive evidence.",
+                    "source": {
+                        "task_id": "template",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "safe_abstraction"
+                    }
+                }
+            ],
+            "schema_or_name_mismatch": [
+                {
+                    "skill_id": "sk-00017",
+                    "content": "When reasoning over previously fetched data, re-check the actual field names and value formats from the observation before writing code that joins, filters, or aggregates them.",
+                    "note": "Prevent local logic from inheriting wrong schema assumptions.",
+                    "source": {
+                        "task_id": "template",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "schema_or_name_mismatch"
+                    }
+                }
+            ],
             "missing_decisive_information": [
                 {
-                    "skill_id": "sk-00030",
-                    "content": "After printing or inspecting fetched records, immediately derive the decision-ready representation (e.g., parsed entities, amounts, and filters for exclusions) before taking the next API action; do not leave critical fields embedded in raw text.",
-                    "note": "Local reasoning should convert raw fetched content into actionable structured data when downstream actions depend on it.",
+                    "skill_id": "sk-00018",
+                    "content": "If a local decision depends on several conditions, inspect intermediate subsets or counts before finalizing the conclusion so the next action is grounded in enough evidence.",
+                    "note": "Encourage intermediate checking when the final local conclusion may be under-supported.",
                     "source": {
-                        "task_id": "22cc237_2",
+                        "task_id": "template",
                         "primary_board": "local_reasoning",
                         "diff_category": "missing_decisive_information"
                     }
@@ -391,19 +437,29 @@
             ],
             "value_or_state_mismatch": [
                 {
-                    "skill_id": "sk-00008",
-                    "content": "When deriving a specific value from local parsing/filtering rules, don\u2019t predict the final item by intuition\u2014inspect the exact input ordering and rule trigger (e.g., first match vs all matches), and print/check the intermediate candidates before committing to a concrete output.",
-                    "note": "Refines local reasoning guidance for rule-based extraction where ordering and first-match logic determine the returned value.",
+                    "skill_id": "sk-00019",
+                    "content": "When deriving counts, matches, or rankings from fetched data, verify that your normalization and comparison logic matches the real value formats and entity keys before using the result downstream.",
+                    "note": "Derived results should be checked against the true value and key formats.",
                     "source": {
-                        "task_id": "82e2fac_3",
+                        "task_id": "template",
                         "primary_board": "local_reasoning",
                         "diff_category": "value_or_state_mismatch"
                     }
                 },
                 {
-                    "skill_id": "sk-00025",
-                    "content": "For time-based filters computed locally (e.g., last N days), avoid hard-coding or assuming today\u2019s date in predictions; first read/print the runtime date and derive bounds from it before expecting concrete date values.",
-                    "note": "Handles value/state mismatches caused by environment-dependent current time in local computations.",
+                    "skill_id": "sk-00029",
+                    "content": "When multiple extracted candidates can satisfy a condition, don\u2019t rely on incidental parse order; apply an explicit selection rule (e.g., recency, user request constraint, or all matches) and verify the chosen value against the source text before using it.",
+                    "note": "Prevents wrong concrete outputs from first-match/ordering assumptions during local parsing.",
+                    "source": {
+                        "task_id": "29caf6f_2",
+                        "primary_board": "local_reasoning",
+                        "diff_category": "value_or_state_mismatch"
+                    }
+                },
+                {
+                    "skill_id": "sk-00030",
+                    "content": "For local date/time calculations used as API filters, derive bounds from the environment\u2019s current runtime date/time and treat those computed values as the source of truth instead of predicting calendar values from memory.",
+                    "note": "Prevents downstream state mismatches caused by assumed rather than computed temporal bounds.",
                     "source": {
                         "task_id": "afc0fce_3",
                         "primary_board": "local_reasoning",
@@ -411,9 +467,9 @@
                     }
                 },
                 {
-                    "skill_id": "sk-00026",
-                    "content": "When combining multiple local collections (e.g., unions of IDs from songs/albums/playlists), compute and inspect per-source counts and overlap/unique totals before predicting concrete final counts or value ranges.",
-                    "note": "Prevents value/state mismatches in local aggregation by grounding expectations in explicit intermediate summaries.",
+                    "skill_id": "sk-00031",
+                    "content": "When combining entities from multiple local collections, validate the merged scope with quick diagnostics (per-source counts, overlap sizes, and min/max key ranges) before predicting concrete totals or downstream winners.",
+                    "note": "Prevents value/state mismatches caused by underestimating merged coverage in local reasoning.",
                     "source": {
                         "task_id": "27e1026_1",
                         "primary_board": "local_reasoning",
@@ -421,31 +477,21 @@
                     }
                 },
                 {
-                    "skill_id": "sk-00032",
-                    "content": "For local money totals built from filtered transactions, verify the intermediate set and amount semantics before predicting the final sum: print a small sample of matched rows, confirm the identity key used for matching (e.g., sender/recipient email), and confirm whether `amount` is signed or absolute for that direction.",
-                    "note": "Prevents value mismatches in local financial aggregation by grounding totals in validated subset membership and amount interpretation.",
+                    "skill_id": "sk-00035",
+                    "content": "When reconciling people across local datasets (e.g., note names vs transaction senders), don\u2019t mark status changes from loose substring matches alone; require a stronger identity match (exact normalized full name/email or validated contact mapping), and keep ambiguous matches unresolved until verified.",
+                    "note": "Prevents incorrect paid/pending classification from fuzzy cross-source name matching.",
                     "source": {
-                        "task_id": "d0b1f43_2",
+                        "task_id": "22cc237_2",
                         "primary_board": "local_reasoning",
                         "diff_category": "value_or_state_mismatch"
                     }
                 },
                 {
-                    "skill_id": "sk-00038",
-                    "content": "When selecting an item from already-fetched local records (e.g., max/min/filter), treat non-selection fields as fixed to the source object: verify by printing the chosen record directly and avoid predicting inferred metadata values (ratings, timestamps, visibility, IDs) that were not recomputed.",
-                    "note": "Prevents value/state mismatches from hallucinating concrete attributes after local selection.",
+                    "skill_id": "sk-00047",
+                    "content": "After local filtering/sorting to identify a target record, treat the computed top candidate\u2019s fields (e.g., id, amount, counterpart identifiers) as the source of truth and read them directly for the next action instead of relying on guessed historical values.",
+                    "note": "Prevents value/state drift between local selection results and subsequent action inputs.",
                     "source": {
-                        "task_id": "b0a8eae_2",
-                        "primary_board": "local_reasoning",
-                        "diff_category": "value_or_state_mismatch"
-                    }
-                },
-                {
-                    "skill_id": "sk-00040",
-                    "content": "When computing totals from per-item attributes (e.g., playlist duration from song durations), avoid predicting concrete final numbers until you inspect the computed components: print per-item values for at least one candidate and verify the exact field and unit being summed before expecting exact totals.",
-                    "note": "Prevents local value/state mismatches in numeric aggregation by grounding expectations in intermediate per-item contributions.",
-                    "source": {
-                        "task_id": "b0a8eae_3",
+                        "task_id": "60d0b5b_2",
                         "primary_board": "local_reasoning",
                         "diff_category": "value_or_state_mismatch"
                     }
@@ -453,19 +499,19 @@
             ],
             "wrong_action_or_failure_mode": [
                 {
-                    "skill_id": "sk-00019",
-                    "content": "When local formatting code fails with a sandbox restriction (e.g., module/function not allowed), treat that as an environment constraint and immediately rework the transformation using simpler allowed string/list operations instead of retrying equivalent blocked helpers.",
-                    "note": "Handle tool-policy failure modes during local data transformation.",
+                    "skill_id": "sk-00020",
+                    "content": "If local reasoning produces an empty set, impossible count, or surprising winner, debug the assumption with a small intermediate print or sample check before taking the next environment action.",
+                    "note": "Unexpected local results should trigger quick assumption checks before the next step.",
                     "source": {
-                        "task_id": "6104387_1",
+                        "task_id": "template",
                         "primary_board": "local_reasoning",
                         "diff_category": "wrong_action_or_failure_mode"
                     }
                 },
                 {
-                    "skill_id": "sk-00020",
-                    "content": "Before assuming local transformation code will fail due to data-shape issues, run a minimal sanity check on the in-memory object structure (e.g., sample type/key access) and then proceed with the simplest direct implementation.",
-                    "note": "Reduce wrong failure-mode predictions by grounding local reasoning in quick structure checks.",
+                    "skill_id": "sk-00027",
+                    "content": "When doing local data transformation, do not assume all Python modules/functions are permitted; if an import or function is blocked, switch to a simpler allowed string/list-based construction instead of retrying restricted utilities.",
+                    "note": "Addresses repeated wrong failure mode from sandbox restrictions during local formatting.",
                     "source": {
                         "task_id": "6104387_1",
                         "primary_board": "local_reasoning",
