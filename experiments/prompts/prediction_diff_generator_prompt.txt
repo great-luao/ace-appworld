@@ -25,7 +25,8 @@ print(apis.api_docs.show_api_doc(app_name='spotify', api_name='login'))
 
 Each code execution will produce an output that you can use in subsequent calls. Using these APIs, you can now generate code, that I will execute, to solve the task.
 
-During the task, you may receive an extra user message that begins with `Here are some Skill Guidances for you,`. It contains several skills grouped by action type. You can take the useful part of them as inspiration or reference for the next action. It is not environment output or API documentation, so verify API names, parameters, schemas, and values against actual API docs and environment outputs.
+During the task, you may receive an extra user message that begins with `Here are some Skill Guidances for you,`. These messages can appear multiple times during the trajectory. Each one contains one-step guidance snippets grouped by primary board, for example `## AUTH`, `## DOCS LOOKUP`, or `## READ FETCH`. Treat them as lightweight hints for your very next step: you may use the useful part of them as inspiration or reference, but they are not environment output or API documentation, so you must still verify API names, parameters, schemas, pagination behavior, and concrete values against actual API docs and environment outputs.
+
 
 USER:
 **Key instructions**:

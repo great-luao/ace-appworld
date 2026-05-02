@@ -46,7 +46,7 @@ local generator_model_config = {
             "max_cost_per_task": 10,
             "log_lm_calls": true,
         },
-        "dataset": "test_normal_difficulty_3",
-        "skip_existing_outputs": true,
+        "dataset": "test_normal_difficulty_2",
+        "skip_existing_outputs": false,
     }
 }
