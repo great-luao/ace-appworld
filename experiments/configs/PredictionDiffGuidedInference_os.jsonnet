@@ -36,7 +36,7 @@ local generator_model_config = {
                 "color": true,
                 "verbose": false,
             },
-            "generator_prompt_file_path": experiment_prompts_path + "/prediction_diff_generator_prompt.txt",
+            "generator_prompt_file_path": experiment_prompts_path + "/prediction_diff_generator_prompt_os.txt",
             "retrieval_datapoints_file_path": experiment_outputs_path + "/ReAct_train_gpt_5-4/retrieval_index/datapoints.jsonl",
             "skillbank_file_path": experiment_skillbanks_path + "/appworld_skillbank_diff3_gpt3codex.json",
             "retrieval_backend_name": "hybrid_tfidf",
@@ -56,7 +56,7 @@ local generator_model_config = {
             "max_prompt_length": 900000,
             "max_output_length": 400000,
         },
-        "dataset": "test_normal_difficulty_2_24",
-        "skip_existing_outputs": false,
+        "dataset": "test_normal_difficulty_2",
+        "skip_existing_outputs": true,
     }
 }

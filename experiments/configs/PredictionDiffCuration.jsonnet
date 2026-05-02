@@ -6,6 +6,7 @@ local curator_model_config = {
     "name": "gpt-5.3-codex",
     "provider": "OpenAI",
     "base_url": "https://api.zwlbnot.cn/v1",
+    "reasoning_effort": "medium",
     "temperature": 0,
     "seed": 100,
     "stop": ["<|endoftext|>", "<|eot_id|>", "<|start_header_id|>"],
@@ -34,7 +35,7 @@ local curator_model_config = {
             "classification_file_name": "prediction_diff_classification.jsonl",
             "max_field_chars": 500000,
             "max_history_chars": 500000,
-            "log_lm_calls": true,
+            "log_lm_calls": false,
         },
         "dataset": "train",
     }
