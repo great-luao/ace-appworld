@@ -31,7 +31,7 @@ class SimplifiedReActAgent(Agent):
         prefix_max_skills: int = 20,
         trajectory_skill_window_rounds: int = 3,
         ignore_multiple_calls: bool = True,
-        max_prompt_length: int | None = None,
+        max_prompt_length: int | None = 800000,
         max_output_length: int = 400000,
         **kwargs: Any,
     ):

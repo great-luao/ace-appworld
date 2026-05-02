@@ -21,7 +21,7 @@ class SimplifiedReActStarAgent(StarAgent):
         initial_playbook_file_path: str | None = None,
         trained_playbook_file_path: str | None = None,
         ignore_multiple_calls: bool = True,
-        max_prompt_length: int | None = None,
+        max_prompt_length: int | None = 800000,
         max_output_length: int = 400000,
         **kwargs: Any,
     ):

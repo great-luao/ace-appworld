@@ -279,7 +279,9 @@ class PredictionDiffInferenceReActAgent(BaseSimplifiedReActAgent):
         self.messages.append(
             {
                 "role": "user",
-                "content": "Output:\n```\n" + execution_output.content + "```\n\n",
+                "content": "Output:\n```\n"
+                + self.truncate_output(execution_output.content)
+                + "```\n\n",
             }
         )
 

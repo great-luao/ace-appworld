@@ -16,8 +16,8 @@ class BaseSimplifiedReActAgent(BaseAgent):
         self,
         generator_prompt_file_path: str | None = None,
         ignore_multiple_calls: bool = True,
-        max_prompt_length: int = 100000,
-        max_output_length: int = 50000,
+        max_prompt_length: int = 800000,
+        max_output_length: int = 400000,
         enable_output_prediction: bool = True,
         output_prediction_max_tokens: int = 400,
         output_prediction_stop_tokens: list[str] | None = None,
@@ -91,7 +91,10 @@ class BaseSimplifiedReActAgent(BaseAgent):
             # maybe_new_line = "\n" if not last_execution_output.endswith("\n") else ""
             maybe_new_line = ""  # Update this to ^ because of "Execution Successful." Original code did not do it.
             last_execution_output_content = (
-                "Output:\n```\n" + last_execution_output_content + maybe_new_line + "```\n\n"
+                "Output:\n```\n"
+                + self.truncate_output(last_execution_output_content)
+                + maybe_new_line
+                + "```\n\n"
             )
             self.messages.append({"role": "user", "content": last_execution_output_content})
         messages = self.trimmed_messages
@@ -164,6 +167,13 @@ class BaseSimplifiedReActAgent(BaseAgent):
             cmd_index = new_prompt.find("ASSISTANT:") if "ASSISTANT:" in new_prompt else 0
             prompt = "\n[TRIMMED HISTORY]\n\n" + new_prompt[cmd_index:]
         return init_prompt + prompt
+
+    def truncate_output(self, execution_output_content: str) -> str:
+        if len(execution_output_content) > 20000:
+            execution_output_content = (
+                execution_output_content[:20000] + "\n[REST NOT SHOWN FOR BREVITY]"
+            )
+        return execution_output_content
 
     def text_to_messages(self, input_str: str) -> list[dict]:
         messages_json = []
