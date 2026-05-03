@@ -135,3 +135,5 @@ METHODS/
 # !generate/data
 
 *.code-workspace
+
+.tmp
