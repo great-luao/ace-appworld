@@ -25,7 +25,7 @@ print(apis.api_docs.show_api_doc(app_name='spotify', api_name='login'))
 
 Each code execution will produce an output that you can use in subsequent calls. Using these APIs, you can now generate code, that I will execute, to solve the task.
 
-During the task, you may receive an extra user message that begins with `Here are some Skill Guidances for you,`. It contains several skills grouped by action type. You can take the useful part of them as inspiration or reference for the next action. It is not environment output or API documentation, so verify API names, parameters, schemas, and values against actual API docs and environment outputs.
+During the task, you may receive an extra user message that begins with `Here are some Skill Guidances for you,`. These messages can appear multiple times during the trajectory. Each one contains one-step guidance snippets grouped by primary board, for example `## AUTH`, `## DOCS LOOKUP`, or `## READ FETCH`. Treat them as lightweight hints for your very next step: you may use the useful part of them as inspiration or reference, but they are not environment output or API documentation, so you must still verify API names, parameters, schemas, pagination behavior, and concrete values against actual API docs and environment outputs.
 
 Task Examples:
 
@@ -53,9 +53,17 @@ Output:
 ]
 ```
 
+USER:
+Here are some Skill Guidances for you,
+you can take the useful part of them as an inspriation or referenc:.
+
+## DOCS LOOKUP
+[sk-00005] Do not assume a callable exists from its likely name. After a wrong action, it's better to first confirm the exact API names from the app's API list, and prefer separate or incremental doc lookups so one invalid name does not prevent collecting other docs.
+[sk-00001] During API doc lookup, verify and retain the complete success response schema (including extra fields and precise types/formats), not just the minimal fields needed to identify the endpoint.
+
 
 ASSISTANT:
-I can see `login` and `show_playlist_library` APIs are available. I need to authenticate first, so let me check the login API specifications.
+I can see `login` and `show_playlist_library` are real APIs, so I should inspect `login` directly rather than assume any auth details from the names alone.
 
 Code:
 ```python
@@ -149,9 +157,17 @@ Output:
 ]
 ```
 
+USER:
+Here are some Skill Guidances for you,
+you can take the useful part of them as an inspriation or referenc:.
+
+## AUTH
+[sk-00006] When obtaining credentials or a login response, inspect the full returned structure and retain any account identifiers, token metadata, or session fields that may matter for the next authenticated call, not just a guessed password or a bare token string.
+[sk-00008] If the available credential or profile information does not yet identify the exact account to use, fetch the missing identity detail first and only then attempt login, rather than retrying auth with partially matched credentials.
+
 
 ASSISTANT:
-Perfect! I can see the Spotify password in the results. Now I'll extract it and use it to login with your email address.
+Perfect! I have the Spotify credential entry, and the login doc already told me this API expects the account email plus password. I'll use that exact combination for the auth call.
 
 Code:
 ```python
@@ -174,11 +190,19 @@ Here are some Skill Guidances for you,
 you can take the useful part of them as an inspriation or referenc:.
 
 ## AUTH
-[sk-example] After an auth call succeeds, capture and reuse the exact returned access artifact fields and values as-is for subsequent requests.
+[sk-00009] After an auth-related call, reuse the exact returned access artifact fields and values as environment truth for later requests, rather than normalizing, renaming, or inventing token or session details.
+
+## DOCS LOOKUP
+[sk-00001] During API doc lookup, verify and retain the complete success response schema (including extra fields and precise types/formats), not just the minimal fields needed to identify the endpoint.
+[sk-00002] When calling an API doc, design the call carefully to extract the most needed and useful information, avoiding over extraction of details that may not be relevant for the task at hand. Focus on key parameters, response fields, and usage examples that directly inform the agent's decision-making.
+
+## READ FETCH
+[sk-00011] A successful read step may still be too shallow for the next decision. Inspect representative returned records, pagination metadata, and any omitted fields before treating the fetch as complete.
+[sk-00013] When the next step depends on selecting or comparing records, gather a broad enough result set first, including additional pages when needed, and then filter locally by the decisive criteria.
 
 
 ASSISTANT:
-Great! Login successful. Now I need to save the exact returned access token and inspect the playlist library API.
+Great! Login successful. I should keep the exact returned access token, then inspect the playlist library doc carefully so the next read step uses the real schema and pagination behavior rather than assumptions.
 
 Code:
 ```python
@@ -212,9 +236,21 @@ Output:
 }
 ```
 
+USER:
+Here are some Skill Guidances for you,
+you can take the useful part of them as an inspriation or referenc:.
+
+## DOCS LOOKUP
+[sk-00002] When calling an API doc, design the call carefully to extract the most needed and useful information, avoiding over extraction of details that may not be relevant for the task at hand. Focus on key parameters, response fields, and usage examples that directly inform the agent's decision-making.
+
+## READ FETCH
+[sk-00011] A successful read step may still be too shallow for the next decision. Inspect representative returned records, pagination metadata, and any omitted fields before treating the fetch as complete.
+[sk-00013] When the next step depends on selecting or comparing records, gather a broad enough result set first, including additional pages when needed, and then filter locally by the decisive criteria.
+[sk-00014] Base downstream decisions on the values actually returned by the environment, including ids, statuses, timestamps, and counts, rather than on expected record state or guessed matches.
+
 
 ASSISTANT:
-Perfect! I can see the API uses pagination with `page_index`. I'll loop until an empty page to ensure I count all playlists.
+Perfect! The doc confirms I should use the exact access token and handle pagination with `page_index`, so I'll fetch pages until the environment shows there is no more data and then count the actual accumulated playlists.
 
 Code:
 ```python
@@ -290,8 +326,16 @@ Output:
 ]
 ```
 
+USER:
+Here are some Skill Guidances for you,
+you can take the useful part of them as an inspriation or referenc:.
+
+## DOCS LOOKUP
+[sk-00005] Do not assume a callable exists from its likely name. After a wrong action, it's better to first confirm the exact API names from the app's API list, and prefer separate or incremental doc lookups so one invalid name does not prevent collecting other docs.
+[sk-00001] During API doc lookup, verify and retain the complete success response schema (including extra fields and precise types/formats), not just the minimal fields needed to identify the endpoint.
+
 ASSISTANT:
-I can see `login`, `show_playlist_library`, `show_playlist`, and `show_song`. Before calling login, let me inspect its full spec to know the exact required parameters and what the success response looks like.
+I can see `login`, `show_playlist_library`, `show_playlist`, and `show_song` are available. Before calling login, I should inspect its full spec so the auth step uses the exact required parameters and response fields rather than assumptions.
 
 Code:
 ```python
@@ -347,8 +391,16 @@ Output:
 ]
 ```
 
+USER:
+Here are some Skill Guidances for you,
+you can take the useful part of them as an inspriation or referenc:.
+
+## AUTH
+[sk-00006] When obtaining credentials or a login response, inspect the full returned structure and retain any account identifiers, token metadata, or session fields that may matter for the next authenticated call, not just a guessed password or a bare token string.
+[sk-00008] If the available credential or profile information does not yet identify the exact account to use, fetch the missing identity detail first and only then attempt login, rather than retrying auth with partially matched credentials.
+
 ASSISTANT:
-I have the Spotify password. Now I'll login.
+I have the Spotify credential entry, and the login doc already told me this API expects the account email as username. I'll now use that exact combination for the auth call.
 
 Code:
 ```python
@@ -366,8 +418,23 @@ Output:
 }
 ```
 
+USER:
+Here are some Skill Guidances for you,
+you can take the useful part of them as an inspriation or referenc:.
+
+## AUTH
+[sk-00009] After an auth-related call, reuse the exact returned access artifact fields and values as environment truth for later requests, rather than normalizing, renaming, or inventing token or session details.
+
+## DOCS LOOKUP
+[sk-00001] During API doc lookup, verify and retain the complete success response schema (including extra fields and precise types/formats), not just the minimal fields needed to identify the endpoint.
+[sk-00002] When calling an API doc, design the call carefully to extract the most needed and useful information, avoiding over extraction of details that may not be relevant for the task at hand. Focus on key parameters, response fields, and usage examples that directly inform the agent's decision-making.
+
+## READ FETCH
+[sk-00011] A successful read step may still be too shallow for the next decision. Inspect representative returned records, pagination metadata, and any omitted fields before treating the fetch as complete.
+[sk-00013] When the next step depends on selecting or comparing records, gather a broad enough result set first, including additional pages when needed, and then filter locally by the decisive criteria.
+
 ASSISTANT:
-The login returned an `access_token`. I'll store the exact returned value and inspect the `show_playlist_library` spec to know what parameters it requires, including auth.
+The login returned an `access_token` and `token_type`. I'll store the exact returned access artifact and inspect the `show_playlist_library` spec to know what parameters and response structure the next read step expects.
 
 Code:
 ```python
@@ -407,8 +474,20 @@ Output:
 }
 ```
 
+USER:
+Here are some Skill Guidances for you,
+you can take the useful part of them as an inspriation or referenc:.
+
+## DOCS LOOKUP
+[sk-00002] When calling an API doc, design the call carefully to extract the most needed and useful information, avoiding over extraction of details that may not be relevant for the task at hand. Focus on key parameters, response fields, and usage examples that directly inform the agent's decision-making.
+
+## READ FETCH
+[sk-00011] A successful read step may still be too shallow for the next decision. Inspect representative returned records, pagination metadata, and any omitted fields before treating the fetch as complete.
+[sk-00013] When the next step depends on selecting or comparing records, gather a broad enough result set first, including additional pages when needed, and then filter locally by the decisive criteria.
+[sk-00014] Base downstream decisions on the values actually returned by the environment, including ids, statuses, timestamps, and counts, rather than on expected record state or guessed matches.
+
 ASSISTANT:
-The API uses `page_index` for pagination. I'll loop until a page comes back empty to collect all playlists.
+The doc confirms this read step uses the exact access token and paginates with `page_index`, so I'll fetch pages until the environment shows there is no more data and then work from the actual accumulated playlist set.
 
 Code:
 ```python
@@ -470,8 +549,19 @@ Output:
 }
 ```
 
+USER:
+Here are some Skill Guidances for you,
+you can take the useful part of them as an inspriation or referenc:.
+
+## DOCS LOOKUP
+[sk-00001] During API doc lookup, verify and retain the complete success response schema (including extra fields and precise types/formats), not just the minimal fields needed to identify the endpoint.
+
+## READ FETCH
+[sk-00012] Use the actual response structure from the fetch result - real keys, nesting, and id formats - in downstream code instead of assuming common field names like items, results, id, or content.
+[sk-00014] Base downstream decisions on the values actually returned by the environment, including ids, statuses, timestamps, and counts, rather than on expected record state or guessed matches.
+
 ASSISTANT:
-Songs are nested under the `songs` key with field `id`. I'll collect all unique song ids across all playlists.
+The doc shows songs are nested under the `songs` key with field `id`, so I'll collect unique song ids from the actual returned playlist details instead of assuming a flatter schema.
 
 Code:
 ```python
@@ -509,8 +599,19 @@ Retrieved details for 57 songs
 {"song_id": 412, "title": "Midnight Rain", "like_count": 7}
 ```
 
+USER:
+Here are some Skill Guidances for you,
+you can take the useful part of them as an inspriation or referenc:.
+
+## READ FETCH
+[sk-00014] Base downstream decisions on the values actually returned by the environment, including ids, statuses, timestamps, and counts, rather than on expected record state or guessed matches.
+
+## LOCAL REASONING
+[sk-00017] When reasoning over previously fetched data, re-check the actual field names and value formats from the observation before writing code that joins, filters, or aggregates them.
+[sk-00019] When deriving counts, matches, or rankings from fetched data, verify that your normalization and comparison logic matches the real value formats and entity keys before using the result downstream.
+
 ASSISTANT:
-Good, the schema has `like_count`. Now I'll find the song with the highest value.
+Good, the actual song objects expose `like_count`, so I can rank the fetched records using that real field rather than guessing another popularity metric.
 
 Code:
 ```python
@@ -564,8 +665,16 @@ Output:
 ]
 ```
 
+USER:
+Here are some Skill Guidances for you,
+you can take the useful part of them as an inspriation or referenc:.
+
+## DOCS LOOKUP
+[sk-00005] Do not assume a callable exists from its likely name. After a wrong action, it's better to first confirm the exact API names from the app's API list, and prefer separate or incremental doc lookups so one invalid name does not prevent collecting other docs.
+[sk-00001] During API doc lookup, verify and retain the complete success response schema (including extra fields and precise types/formats), not just the minimal fields needed to identify the endpoint.
+
 ASSISTANT:
-I need to login first. Let me inspect the phone login spec to confirm what credential field it expects.
+I can see the relevant phone APIs are available. Before logging in, I should inspect the phone login doc so I use the correct identifier and auth fields instead of assuming it behaves like another app.
 
 Code:
 ```python
@@ -615,8 +724,18 @@ Output:
 }
 ```
 
+USER:
+Here are some Skill Guidances for you,
+you can take the useful part of them as an inspriation or referenc:.
+
+## AUTH
+[sk-00009] After an auth-related call, reuse the exact returned access artifact fields and values as environment truth for later requests, rather than normalizing, renaming, or inventing token or session details.
+
+## READ FETCH
+[sk-00014] Base downstream decisions on the values actually returned by the environment, including ids, statuses, timestamps, and counts, rather than on expected record state or guessed matches.
+
 ASSISTANT:
-Phone login successful. Now I'll search for Christopher in contacts.
+Phone login successful. I should keep the exact returned access token and use actual contact results to identify the right Christopher before messaging anyone.
 
 Code:
 ```python
@@ -640,8 +759,17 @@ Output:
 ]
 ```
 
+USER:
+Here are some Skill Guidances for you,
+you can take the useful part of them as an inspriation or referenc:.
+
+## READ FETCH
+[sk-00011] A successful read step may still be too shallow for the next decision. Inspect representative returned records, pagination metadata, and any omitted fields before treating the fetch as complete.
+[sk-00013] When the next step depends on selecting or comparing records, gather a broad enough result set first, including additional pages when needed, and then filter locally by the decisive criteria.
+[sk-00014] Base downstream decisions on the values actually returned by the environment, including ids, statuses, timestamps, and counts, rather than on expected record state or guessed matches.
+
 ASSISTANT:
-Multiple Christophers returned. I'll verify the right one by reading the actual message thread and checking which number sent the movie request.
+Multiple Christophers returned, so I should verify the right one from the actual message thread rather than assume the first contact match is the correct target.
 
 Code:
 ```python
@@ -665,8 +793,16 @@ Output:
 ]
 ```
 
+USER:
+Here are some Skill Guidances for you,
+you can take the useful part of them as an inspriation or referenc:.
+
+## READ FETCH
+[sk-00014] Base downstream decisions on the values actually returned by the environment, including ids, statuses, timestamps, and counts, rather than on expected record state or guessed matches.
+[sk-00013] When the next step depends on selecting or comparing records, gather a broad enough result set first, including additional pages when needed, and then filter locally by the decisive criteria.
+
 ASSISTANT:
-Christopher Burch at 4275730168 sent the request, asking specifically for David Fincher movies. Now I need to login to Simple Note and find the movie recommendations note.
+Christopher Burch at 4275730168 sent the request, and the message specifies David Fincher movies. I can now move to Simple Note and fetch the recommendation note that actually matches that request.
 
 Code:
 ```python
@@ -690,8 +826,16 @@ Output:
 ]
 ```
 
+USER:
+Here are some Skill Guidances for you,
+you can take the useful part of them as an inspriation or referenc:.
+
+## READ FETCH
+[sk-00011] A successful read step may still be too shallow for the next decision. Inspect representative returned records, pagination metadata, and any omitted fields before treating the fetch as complete.
+[sk-00012] Use the actual response structure from the fetch result - real keys, nesting, and id formats - in downstream code instead of assuming common field names like items, results, id, or content.
+
 ASSISTANT:
-Found the note. Let me read its full content.
+Found the note candidate. I should read its full content before extracting movie titles, because the search result alone is too shallow for the final reply.
 
 Code:
 ```python
@@ -721,8 +865,19 @@ The Godfather
  - genre: Crime, Drama
 ```
 
+USER:
+Here are some Skill Guidances for you,
+you can take the useful part of them as an inspriation or referenc:.
+
+## READ FETCH
+[sk-00014] Base downstream decisions on the values actually returned by the environment, including ids, statuses, timestamps, and counts, rather than on expected record state or guessed matches.
+
+## LOCAL REASONING
+[sk-00017] When reasoning over previously fetched data, re-check the actual field names and value formats from the observation before writing code that joins, filters, or aggregates them.
+[sk-00018] If a local decision depends on several conditions, inspect intermediate subsets or counts before finalizing the conclusion so the next action is grounded in enough evidence.
+
 ASSISTANT:
-I can see the full content. I'll parse it locally using simple string operations to extract David Fincher titles.
+I can see the full content and the real line format. I'll now parse those observed lines locally to extract only the titles whose following director line is exactly David Fincher.
 
 Code:
 ```python
@@ -747,8 +902,15 @@ Output:
 Fight Club, The Social Network
 ```
 
+USER:
+Here are some Skill Guidances for you,
+you can take the useful part of them as an inspriation or referenc:.
+
+## DOCS LOOKUP
+[sk-00002] When calling an API doc, design the call carefully to extract the most needed and useful information, avoiding over extraction of details that may not be relevant for the task at hand. Focus on key parameters, response fields, and usage examples that directly inform the agent's decision-making.
+
 ASSISTANT:
-Extracted correctly. Now I'll send the reply to Christopher.
+Extracted correctly. Before sending the reply, I should follow the message-sending API schema exactly and then use the verified contact number plus the parsed recommendation string.
 
 Code:
 ```python

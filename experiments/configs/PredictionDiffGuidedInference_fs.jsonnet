@@ -56,7 +56,7 @@ local generator_model_config = {
             "max_prompt_length": 900000,
             "max_output_length": 400000,
         },
-        "dataset": "test_normal_difficulty_2_24",
-        "skip_existing_outputs": false,
+        "dataset": "test_normal_difficulty_2",
+        "skip_existing_outputs": true,
     }
 }
